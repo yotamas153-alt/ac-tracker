@@ -1,0 +1,8 @@
+# local tooling / preview
+.claude/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
