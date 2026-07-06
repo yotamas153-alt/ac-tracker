@@ -20,6 +20,13 @@ const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// digits only, leading zeros stripped — for matching scanned labels like "000142172"
+const digitsNoZero = (s) => String(s ?? "").replace(/\D/g, "").replace(/^0+/, "");
+// canonical barcode for storage: strip leading zeros only when fully numeric
+const cleanBarcode = (s) => {
+  const t = String(s ?? "").trim();
+  return /^\d+$/.test(t) ? (t.replace(/^0+/, "") || "0") : t;
+};
 
 // ===================================================================
 //  Boot
@@ -132,8 +139,16 @@ function runSearch() {
 }
 
 function unitMatches(u, term) {
-  return [u.barcode, u.building, u.type, u.location, u.notes, u.lastService, u.oldSku]
+  const textHit = [u.barcode, u.building, u.type, u.location, u.notes, u.lastService, u.oldSku]
     .some((f) => String(f ?? "").toLowerCase().includes(term));
+  if (textHit) return true;
+  // barcode match ignoring leading zeros / spaces / dashes (scanned asset labels)
+  const td = digitsNoZero(term);
+  if (td) {
+    const bd = digitsNoZero(u.barcode);
+    if (bd && bd.includes(td)) return true;
+  }
+  return false;
 }
 
 // ===================================================================
@@ -339,15 +354,16 @@ async function onAddSubmit(e) {
   e.preventDefault();
   const f = e.target;
   const msg = $("#addMsg");
+  const barcode = cleanBarcode(f.barcode.value);
   const unit = {
-    barcode: f.barcode.value, building: f.building.value,
+    barcode, building: f.building.value,
     type: f.type.value, location: f.location.value,
     oldSku: f.oldSku.value, notes: f.notes.value,
   };
-  if (!unit.barcode.trim()) { msg.textContent = "צריך ברקוד"; msg.className = "form-msg is-err"; return; }
+  if (!barcode) { msg.textContent = "צריך ברקוד"; msg.className = "form-msg is-err"; return; }
 
-  const dup = UNITS.find((u) => u.id === unit.barcode.trim());
-  if (dup && !confirm(`ברקוד ${unit.barcode} כבר קיים. לעדכן את הפרטים הקיימים?`)) return;
+  const dup = UNITS.find((u) => u.id === barcode);
+  if (dup && !confirm(`ברקוד ${barcode} כבר קיים. לעדכן את הפרטים הקיימים?`)) return;
 
   try {
     await saveUnit(unit);
