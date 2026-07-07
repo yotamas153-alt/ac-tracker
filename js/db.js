@@ -106,6 +106,34 @@ export async function addService(barcode, { date, description, technician }) {
   });
 }
 
+/** Edit an existing service entry, then refresh the unit summary. */
+export async function updateService(barcode, id, fields) {
+  const ref = doc(db, "units", String(barcode), "services", id);
+  await updateDoc(ref, {
+    date: fields.date,
+    description: fields.description?.trim() || "",
+    technician: fields.technician?.trim() || "",
+  });
+  await recomputeLast(barcode);
+}
+
+/** Delete a service entry, then refresh the unit summary. */
+export async function deleteService(barcode, id) {
+  await deleteDoc(doc(db, "units", String(barcode), "services", id));
+  await recomputeLast(barcode);
+}
+
+/** Recompute a unit's "last service" from its newest remaining entry. */
+async function recomputeLast(barcode) {
+  const q = query(servicesCol(barcode), orderBy("date", "desc"));
+  const snap = await getDocs(q);
+  const top = snap.docs[0]?.data();
+  await updateUnit(barcode, {
+    lastService: top?.description || "",
+    lastServiceDate: top?.date || "",
+  });
+}
+
 // ---- One-time seed / migration ------------------------------------
 
 /** Import an array of legacy records (Hebrew keys) into Firestore.

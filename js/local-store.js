@@ -123,6 +123,40 @@ export async function addService(barcode, { date, description, technician }) {
   notifyUnits();
 }
 
+export async function updateService(barcode, id, fields) {
+  const arr = services[barcode] || [];
+  const it = arr.find((s) => s.id === id);
+  if (!it) return;
+  Object.assign(it, {
+    date: fields.date ?? it.date,
+    description: fields.description?.trim() ?? it.description,
+    technician: fields.technician?.trim() ?? it.technician,
+  });
+  saveServices();
+  recomputeLast(barcode);
+  notifyServices(barcode);
+  notifyUnits();
+}
+
+export async function deleteService(barcode, id) {
+  services[barcode] = (services[barcode] || []).filter((s) => s.id !== id);
+  saveServices();
+  recomputeLast(barcode);
+  notifyServices(barcode);
+  notifyUnits();
+}
+
+/** Refresh a unit's "last service" summary from its newest remaining entry. */
+function recomputeLast(barcode) {
+  const u = units[barcode];
+  if (!u) return;
+  const arr = svcArray(barcode); // newest first
+  u.lastService = arr.length ? arr[0].description : "";
+  u.lastServiceDate = arr.length ? arr[0].date : "";
+  u.updatedAt = now();
+  saveUnits();
+}
+
 export async function seedFromLegacy(records) {
   let added = 0;
   for (const r of records) {

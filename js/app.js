@@ -9,12 +9,13 @@ import { startScan, stopScan } from "./scanner.js";
 const store = isConfigured ? await import("./db.js") : await import("./local-store.js");
 const {
   initDb, watchUnits, saveUnit, updateUnit, deleteUnit,
-  watchServices, addService, seedFromLegacy,
+  watchServices, addService, updateService, deleteService, seedFromLegacy,
 } = store;
 
 // ---- Local state ---------------------------------------------------
 let UNITS = [];                 // live mirror of the "units" collection
 let currentServiceUnsub = null; // active service-log subscription
+let currentServiceList = [];    // latest service entries for the open unit
 
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -103,7 +104,7 @@ function wireUI() {
   // search
   $("#search").addEventListener("input", debounce(runSearch, 120));
   $("#btnScan").addEventListener("click", () =>
-    startScan("reader", (code) => { $("#search").value = code; runSearch(); }));
+    startScan((code) => { $("#search").value = code; runSearch(); }));
 
   // list filter
   $("#listFilter").addEventListener("input", debounce(renderList, 120));
@@ -111,7 +112,7 @@ function wireUI() {
   // add form
   $("#addForm").addEventListener("submit", onAddSubmit);
   $("#btnScanAdd").addEventListener("click", () =>
-    startScan("reader", (code) => { $('#addForm [name=barcode]').value = code; }));
+    startScan((code) => { $('#addForm [name=barcode]').value = cleanBarcode(code); }));
 
   // modal close
   $("#modal").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeModal(); });
@@ -121,7 +122,7 @@ function wireUI() {
 function switchView(name) {
   $$(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${name}`));
   $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.view === name));
-  stopScan("reader");
+  stopScan();
 }
 
 // ===================================================================
@@ -293,16 +294,73 @@ function refreshDetailFields(u) {
 }
 
 function renderTimeline(list) {
+  currentServiceList = list;
   const box = $("#timeline");
   if (!box) return;
   box.innerHTML = list.length
-    ? list.map((s) => `
-        <div class="tl-item">
-          <div class="tl-item__date">📅 ${esc(s.date)}</div>
-          <p class="tl-item__desc">${esc(s.description)}</p>
-          ${s.technician ? `<div class="tl-item__tech">👷 ${esc(s.technician)}</div>` : ""}
-        </div>`).join("")
+    ? list.map(tlItemHTML).join("")
     : `<p class="tl-empty">אין טיפולים רשומים עדיין.</p>`;
+  wireTimeline(box);
+}
+
+function tlItemHTML(s) {
+  return `
+    <div class="tl-item" data-id="${esc(s.id)}">
+      <div class="tl-item__top">
+        <div class="tl-item__date">📅 ${esc(s.date)}</div>
+        <div class="tl-item__btns">
+          <button class="tl-btn tl-edit" title="ערוך">✏️</button>
+          <button class="tl-btn tl-del" title="מחק">🗑️</button>
+        </div>
+      </div>
+      <p class="tl-item__desc">${esc(s.description)}</p>
+      ${s.technician ? `<div class="tl-item__tech">👷 ${esc(s.technician)}</div>` : ""}
+    </div>`;
+}
+
+function wireTimeline(box) {
+  const barcode = $("#modal").dataset.barcode;
+  $$(".tl-del", box).forEach((b) => b.addEventListener("click", async () => {
+    const id = b.closest(".tl-item").dataset.id;
+    if (!confirm("למחוק את רשומת הטיפול הזו?")) return;
+    try { await deleteService(barcode, id); toast("🗑️ הטיפול נמחק"); }
+    catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
+  }));
+  $$(".tl-edit", box).forEach((b) => b.addEventListener("click", () => {
+    const item = b.closest(".tl-item");
+    const s = currentServiceList.find((x) => x.id === item.dataset.id);
+    if (s) openServiceEdit(item, barcode, s);
+  }));
+}
+
+function openServiceEdit(item, barcode, s) {
+  item.innerHTML = `
+    <form class="tl-edit-form">
+      <div class="row">
+        <input type="date" name="date" value="${esc(s.date)}">
+        <input name="technician" value="${esc(s.technician || "")}" placeholder="טכנאי">
+      </div>
+      <textarea name="description" rows="2" required>${esc(s.description || "")}</textarea>
+      <div class="tl-edit-actions">
+        <button class="btn btn--primary btn--sm" type="submit">💾 שמור</button>
+        <button class="btn btn--ghost btn--sm" type="button" data-cancel>ביטול</button>
+      </div>
+    </form>`;
+  const form = item.querySelector("form");
+  form.querySelector("[data-cancel]").addEventListener("click", () => renderTimeline(currentServiceList));
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const desc = form.description.value.trim();
+    if (!desc) return;
+    try {
+      await updateService(barcode, s.id, {
+        date: form.date.value,
+        description: desc,
+        technician: form.technician.value.trim(),
+      });
+      toast("💾 הטיפול עודכן");
+    } catch (err) { console.error(err); toast("שגיאה בעדכון", true); }
+  });
 }
 
 function openEdit(u) {

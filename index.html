@@ -39,7 +39,6 @@
         </div>
         <button id="btnScan" class="btn btn--scan" title="סרוק ברקוד">📷</button>
       </div>
-      <div id="reader" class="reader" hidden></div>
       <div id="searchResults" class="results"></div>
     </section>
 
@@ -109,6 +108,20 @@
 
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
+
+  <!-- ===== Global barcode scanner overlay ===== -->
+  <div id="scanOverlay" class="scan-overlay" hidden>
+    <div class="scan-overlay__bar">
+      <span>📷 סריקת ברקוד / QR</span>
+      <button id="scanClose" class="scan-overlay__close" title="סגור">×</button>
+    </div>
+    <div id="scanReader" class="scan-reader"></div>
+    <p class="scan-hint">כוון את המצלמה אל הברקוד או קוד ה-QR שעל המזגן</p>
+    <form id="scanManual" class="scan-manual">
+      <input name="manual" autocomplete="off" placeholder="או הקלד ברקוד ידנית…">
+      <button class="btn btn--primary" type="submit">אישור</button>
+    </form>
+  </div>
 
   <!-- Barcode scanning library (global) -->
   <script src="https://unpkg.com/html5-qrcode"></script>
