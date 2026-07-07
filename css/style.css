@@ -314,9 +314,9 @@ textarea { resize: vertical; }
 .tabbar {
   position: fixed; z-index: 30;
   inset-inline: 0; bottom: calc(14px + env(safe-area-inset-bottom));
-  width: min(440px, calc(100% - 28px)); margin: 0 auto;
+  width: min(500px, calc(100% - 20px)); margin: 0 auto;
   height: var(--tabbar-h);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: rgba(14,19,36,.72);
   backdrop-filter: blur(22px) saturate(160%);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
@@ -325,10 +325,10 @@ textarea { resize: vertical; }
 }
 .tab {
   border: none; background: none; color: var(--muted); cursor: pointer;
-  font-size: 21px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  position: relative; transition: color .2s; border-radius: 18px; margin: 6px;
+  font-size: 19px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  position: relative; transition: color .2s; border-radius: 16px; margin: 6px 4px;
 }
-.tab span { font-size: 11px; font-weight: 600; }
+.tab span { font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .tab.is-active { color: #fff; }
 .tab.is-active::before {
   content: ""; position: absolute; inset: 0; border-radius: 16px;
