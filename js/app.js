@@ -124,6 +124,38 @@ async function recoverLocal() {
 }
 window.recoverLocal = recoverLocal;
 
+/** On-demand diagnostic: show which units exist only on THIS device, and offer restore. */
+async function runRecoveryDiag() {
+  const box = document.getElementById("recoverDiag");
+  if (!box) return;
+  let lu = {};
+  try { lu = JSON.parse(localStorage.getItem("ac_units") || "{}"); } catch {}
+  const localCount = Object.keys(lu).length;
+  const cloudIds = new Set(UNITS.map((u) => u.id));
+  const missing = Object.keys(lu).filter((bc) => !cloudIds.has(bc)).sort();
+  if (!localCount) {
+    box.innerHTML = `<p class="tl-empty">אין נתונים מקומיים במכשיר זה. נסה במכשיר אחר שבו הוספת מזגנים.</p>`;
+    return;
+  }
+  if (!missing.length) {
+    box.innerHTML = `<p class="tl-empty">במכשיר זה יש ${localCount} מזגנים מקומיים — כולם כבר בענן. אין מה לשחזר כאן.</p>`;
+    return;
+  }
+  box.innerHTML = `
+    <p style="font-weight:600;margin:0 0 8px">נמצאו <b>${missing.length}</b> מזגנים שקיימים רק במכשיר זה:</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 12px">${missing.join(", ")}</p>
+    <button class="btn btn--primary" id="doRecover">☁️ שחזר ${missing.length} מזגנים לענן</button>`;
+  document.getElementById("doRecover").addEventListener("click", async () => {
+    const b = document.getElementById("doRecover");
+    b.disabled = true; b.textContent = "משחזר…";
+    try {
+      const c = await recoverLocal();
+      box.innerHTML = `<p class="form-msg is-ok">✅ שוחזרו ${c} מזגנים לענן. הם יופיעו כעת אצל כולם.</p>`;
+    } catch (e) { console.error(e); b.disabled = false; b.textContent = "נסה שוב"; }
+  });
+}
+window.runRecoveryDiag = runRecoveryDiag;
+
 /** Time-of-day greeting for ג.פ מיזוגים, based on the device's local clock. */
 function updateGreeting() {
   const el = $("#greeting");
@@ -889,6 +921,11 @@ function renderDashboard() {
     </div>
 
     <div class="panel">
+      <div class="section-head"><h3>🛟 שחזור מזגנים מקומיים</h3><button class="btn btn--ghost btn--sm" id="recoverCheck">בדוק מכשיר זה</button></div>
+      <div id="recoverDiag"><p class="tl-empty">אם הוספת מזגנים שנעלמו — לחץ "בדוק מכשיר זה" בכל מכשיר שבו עבדת.</p></div>
+    </div>
+
+    <div class="panel">
       <div class="section-head"><h3>🗓️ עבודות מתוכננות</h3><button class="btn btn--primary btn--sm" id="dashAddProject">➕ עבודה</button></div>
       <div id="dashProjects">${projectsListHTML()}</div>
     </div>
@@ -900,6 +937,7 @@ function renderDashboard() {
       <div class="site-cards">${buildings.map(siteCardHTML).join("")}</div>
     </div>`;
 
+  $("#recoverCheck").addEventListener("click", runRecoveryDiag);
   $("#dashAddProject").addEventListener("click", () => openProjectForm());
   $$("#dashProjects .proj-row").forEach((r) => r.addEventListener("click", () => openProjectForm(r.dataset.id)));
   $$(".site-card").forEach((c) => c.addEventListener("click", () => openBuilding(c.dataset.building === "ללא" ? "ללא" : c.dataset.building)));
