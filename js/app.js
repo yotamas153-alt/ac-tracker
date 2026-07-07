@@ -71,6 +71,58 @@ updateGreeting();
 setInterval(updateGreeting, 60000);           // keep it current
 document.addEventListener("visibilitychange", () => { if (!document.hidden) updateGreeting(); });
 if (!isConfigured) initLocalMode();
+// In cloud mode, detect units that were saved only on THIS device (from the
+// earlier local-only period) and offer to upload them so nothing is lost.
+if (isConfigured) setTimeout(checkLocalRecovery, 3500);
+
+let recoveryChecked = false;
+function checkLocalRecovery() {
+  if (recoveryChecked) return;
+  recoveryChecked = true;
+  if (!UNITS.length) { recoveryChecked = false; return setTimeout(checkLocalRecovery, 2000); }
+  let lu;
+  try { lu = JSON.parse(localStorage.getItem("ac_units") || "{}"); } catch { return; }
+  const cloudIds = new Set(UNITS.map((u) => u.id));
+  const missing = Object.keys(lu).filter((bc) => !cloudIds.has(bc));
+  if (missing.length) showRecoveryBanner(missing.length);
+}
+
+function showRecoveryBanner(n) {
+  let el = document.getElementById("recoverBanner");
+  if (!el) { el = document.createElement("div"); el.id = "recoverBanner"; el.className = "recover-banner"; $("#app").prepend(el); }
+  el.innerHTML = `⚠️ נמצאו <b>${n}</b> מזגנים שנוספו במכשיר זה ולא סונכרנו לענן.
+    <button class="btn btn--primary btn--sm" id="recoverBtn">☁️ שחזר לענן</button>`;
+  $("#recoverBtn").addEventListener("click", async () => {
+    const btn = $("#recoverBtn"); btn.disabled = true; btn.textContent = "משחזר…";
+    try {
+      const c = await recoverLocal();
+      el.innerHTML = `✅ שוחזרו ${c} מזגנים לענן. הנתונים סונכרנו לכל המכשירים.`;
+      setTimeout(() => el.remove(), 6000);
+    } catch (e) { console.error(e); btn.disabled = false; btn.textContent = "נסה שוב"; toast("שגיאה בשחזור", true); }
+  });
+}
+
+/** Upload any units in THIS device's local storage that are missing from the
+ *  cloud (plus their maintenance history and photos). Never overwrites cloud data. */
+async function recoverLocal() {
+  const lu = JSON.parse(localStorage.getItem("ac_units") || "{}");
+  const ls = JSON.parse(localStorage.getItem("ac_services") || "{}");
+  const lp = JSON.parse(localStorage.getItem("ac_photos") || "{}");
+  const cloudIds = new Set(UNITS.map((u) => u.id));
+  let n = 0;
+  for (const bc in lu) {
+    if (cloudIds.has(bc)) continue;                 // already in cloud — skip, never clobber
+    try {
+      await saveUnit(lu[bc]);
+      for (const s of (ls[bc] || [])) await addService(bc, { date: s.date, description: s.description, technician: s.technician });
+      for (const p of (lp[bc] || [])) await addPhoto(bc, p.url);
+      n++;
+    } catch (e) { console.error("recover failed for", bc, e); }
+  }
+  console.log("recovered", n, "units to cloud");
+  return n;
+}
+window.recoverLocal = recoverLocal;
 
 /** Time-of-day greeting for ג.פ מיזוגים, based on the device's local clock. */
 function updateGreeting() {

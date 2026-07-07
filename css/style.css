@@ -582,6 +582,15 @@ textarea { resize: vertical; }
 .part-check, .part-del { background: none; border: none; cursor: pointer; font-size: 18px; }
 .part-del { opacity: .6; }
 
+/* ---------- Recovery banner ---------- */
+.recover-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 16px; padding: 13px 16px; border-radius: var(--r);
+  background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.5); color: #fde9b0;
+  font-size: 14px; font-weight: 600; line-height: 1.5; text-align: center;
+}
+.recover-banner .btn { flex: 0 0 auto; }
+
 /* ---------- Motion preference ---------- */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
