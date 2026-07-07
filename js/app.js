@@ -49,7 +49,22 @@ if ("serviceWorker" in navigator) {
 initDb();
 startRealtime();
 wireUI();
+updateGreeting();
+setInterval(updateGreeting, 60000);           // keep it current
+document.addEventListener("visibilitychange", () => { if (!document.hidden) updateGreeting(); });
 if (!isConfigured) initLocalMode();
+
+/** Time-of-day greeting for ג.פ מיזוגים, based on the device's local clock. */
+function updateGreeting() {
+  const el = $("#greeting");
+  if (!el) return;
+  const h = new Date().getHours();
+  let text, icon;
+  if (h >= 5 && h < 12)       { text = "בוקר טוב";     icon = "🌅"; }
+  else if (h >= 12 && h < 18) { text = "צהריים טובים"; icon = "☀️"; }
+  else                        { text = "ערב טוב";      icon = "🌙"; }
+  el.innerHTML = `<span class="greeting__icon">${icon}</span> ${text} לחברת <b>ג.פ מיזוגים</b>`;
+}
 
 /** Local (no-Firebase) mode: auto-import sample data once. */
 async function initLocalMode() {
