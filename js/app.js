@@ -41,14 +41,8 @@ startRealtime();
 wireUI();
 if (!isConfigured) initLocalMode();
 
-/** Local (no-Firebase) mode: show a note and auto-import sample data once. */
+/** Local (no-Firebase) mode: auto-import sample data once. */
 async function initLocalMode() {
-  const note = document.createElement("div");
-  note.className = "local-note";
-  note.innerHTML = `💾 מצב מקומי — הנתונים נשמרים במכשיר הזה בלבד. ` +
-    `לסנכרון ענן בין מכשירים ראה <code>README.md</code>.`;
-  $("#app").prepend(note);
-
   if (!localStorage.getItem("ac_seeded")) {
     try {
       const res = await fetch("data.json");
