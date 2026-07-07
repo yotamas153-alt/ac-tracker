@@ -42,13 +42,43 @@
       <div id="searchResults" class="results"></div>
     </section>
 
-    <!-- View: All units -->
+    <!-- View: Buildings -->
+    <section id="view-buildings" class="view">
+      <div id="buildingsGrid" class="bld-grid"></div>
+    </section>
+
+    <!-- View: All units / building drill-down (with bulk select) -->
     <section id="view-list" class="view">
+      <div class="list-head">
+        <button class="btn btn--ghost btn--sm" id="listBack" hidden>‹ מבנים</button>
+        <h2 id="listTitle">כל המזגנים</h2>
+        <button class="btn btn--ghost btn--sm" id="btnSelect">בחירה</button>
+      </div>
       <div class="list-toolbar">
         <input id="listFilter" type="search" placeholder="סנן לפי מבנה / מיקום / סוג">
         <span id="listCount" class="chip">0</span>
       </div>
+      <div id="bulkBar" class="bulk-bar" hidden>
+        <label class="bulk-all"><input type="checkbox" id="bulkAll"> בחר הכל</label>
+        <span id="bulkCount" class="chip">0</span>
+        <button class="btn btn--sm" id="bulkNote">➕ הערה</button>
+        <button class="btn btn--sm btn--primary" id="bulkMaint">🔧 טיפול</button>
+      </div>
       <div id="listResults" class="results"></div>
+    </section>
+
+    <!-- View: Complaints / service requests -->
+    <section id="view-complaints" class="view">
+      <div class="section-head">
+        <h2>📣 תקלות ופניות</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewComplaint">➕ פנייה</button>
+      </div>
+      <div class="cmpl-filter">
+        <button class="seg is-active" data-cf="open">פתוחות</button>
+        <button class="seg" data-cf="all">הכל</button>
+        <button class="seg" data-cf="done">טופלו</button>
+      </div>
+      <div id="complaintsList" class="results"></div>
     </section>
 
     <!-- View: Add unit -->
@@ -97,8 +127,9 @@
   <!-- ===== Bottom navigation ===== -->
   <nav class="tabbar">
     <button class="tab is-active" data-view="search">🔍<span>חיפוש</span></button>
-    <button class="tab" data-view="list">📋<span>רשימה</span></button>
+    <button class="tab" data-view="buildings">🏢<span>מבנים</span></button>
     <button class="tab" data-view="add">➕<span>הוספה</span></button>
+    <button class="tab" data-view="complaints">📣<span>תקלות</span></button>
     <button class="tab" data-view="dash">📊<span>דוח</span></button>
   </nav>
 

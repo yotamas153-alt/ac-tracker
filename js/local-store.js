@@ -5,22 +5,37 @@
 //  fully usable with zero setup. Data lives on THIS device only.
 // ===================================================================
 
-const UNITS_KEY = "ac_units";
-const SVC_KEY   = "ac_services";
+const UNITS_KEY   = "ac_units";
+const SVC_KEY     = "ac_services";
+const PHOTO_KEY   = "ac_photos";
+const CMPL_KEY    = "ac_complaints";
+const BLD_KEY     = "ac_buildings";
 
 let units = {};        // { barcode: {..fields..} }
 let services = {};      // { barcode: [ {..entry..} ] }
+let photos = {};        // { barcode: [ {id,url,createdAt} ] }
+let complaints = {};    // { id: {..complaint..} }
+let buildings = {};     // { name: {name, cover, updatedAt} }
 
 const unitListeners = new Set();               // Set<fn>
 const svcListeners  = new Map();               // barcode -> Set<fn>
+const photoListeners = new Map();              // barcode -> Set<fn>
+const cmplListeners = new Set();               // Set<fn>
+const bldListeners  = new Set();               // Set<fn>
 
 // ---- persistence --------------------------------------------------
 function load() {
-  try { units    = JSON.parse(localStorage.getItem(UNITS_KEY) || "{}"); } catch { units = {}; }
-  try { services = JSON.parse(localStorage.getItem(SVC_KEY)   || "{}"); } catch { services = {}; }
+  try { units      = JSON.parse(localStorage.getItem(UNITS_KEY) || "{}"); } catch { units = {}; }
+  try { services   = JSON.parse(localStorage.getItem(SVC_KEY)   || "{}"); } catch { services = {}; }
+  try { photos     = JSON.parse(localStorage.getItem(PHOTO_KEY) || "{}"); } catch { photos = {}; }
+  try { complaints = JSON.parse(localStorage.getItem(CMPL_KEY)  || "{}"); } catch { complaints = {}; }
+  try { buildings  = JSON.parse(localStorage.getItem(BLD_KEY)   || "{}"); } catch { buildings = {}; }
 }
-function saveUnits()    { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
-function saveServices() { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
+function saveUnits()      { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
+function saveServices()   { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
+function savePhotos()     { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(photos)); } catch (e) { console.warn("photo storage full", e); } }
+function saveComplaints() { localStorage.setItem(CMPL_KEY, JSON.stringify(complaints)); }
+function saveBuildings()  { try { localStorage.setItem(BLD_KEY, JSON.stringify(buildings)); } catch (e) { console.warn("building storage full", e); } }
 
 const now = () => Date.now();
 const newId = () => `s_${now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -188,4 +203,108 @@ export async function seedFromLegacy(records) {
   saveServices();
   notifyUnits();
   return added;
+}
+
+// ---- Photos -------------------------------------------------------
+function photoArray(barcode) {
+  return [...(photos[barcode] || [])].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyPhotos(barcode) {
+  const set = photoListeners.get(barcode);
+  if (set) { const arr = photoArray(barcode); set.forEach((fn) => fn(arr)); }
+}
+export function watchPhotos(barcode, onData) {
+  if (!photoListeners.has(barcode)) photoListeners.set(barcode, new Set());
+  photoListeners.get(barcode).add(onData);
+  onData(photoArray(barcode));
+  return () => photoListeners.get(barcode)?.delete(onData);
+}
+export async function addPhoto(barcode, url) {
+  if (!photos[barcode]) photos[barcode] = [];
+  photos[barcode].push({ id: newId(), url, createdAt: now() });
+  savePhotos();
+  notifyPhotos(barcode);
+}
+export async function deletePhoto(barcode, id) {
+  photos[barcode] = (photos[barcode] || []).filter((p) => p.id !== id);
+  savePhotos();
+  notifyPhotos(barcode);
+}
+
+// ---- Complaints / service requests --------------------------------
+function complaintsArray() {
+  return Object.values(complaints).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyComplaints() { const arr = complaintsArray(); cmplListeners.forEach((fn) => fn(arr)); }
+export function watchComplaints(onData) {
+  cmplListeners.add(onData);
+  onData(complaintsArray());
+  return () => cmplListeners.delete(onData);
+}
+export async function addComplaint(data) {
+  const id = newId();
+  complaints[id] = {
+    id,
+    customer:   data.customer?.trim()   || "",
+    phone:      data.phone?.trim()      || "",
+    barcode:    data.barcode?.trim()    || "",
+    building:   data.building?.trim()   || "",
+    description:data.description?.trim()|| "",
+    status:     data.status || "open",
+    createdAt: now(), updatedAt: now(),
+  };
+  saveComplaints();
+  notifyComplaints();
+  return id;
+}
+export async function updateComplaint(id, fields) {
+  if (!complaints[id]) return;
+  Object.assign(complaints[id], fields, { updatedAt: now() });
+  saveComplaints();
+  notifyComplaints();
+}
+export async function deleteComplaint(id) {
+  delete complaints[id];
+  saveComplaints();
+  notifyComplaints();
+}
+
+// ---- Buildings (cover photos) -------------------------------------
+function buildingsArray() {
+  return Object.values(buildings).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+function notifyBuildings() { const arr = buildingsArray(); bldListeners.forEach((fn) => fn(arr)); }
+export function watchBuildings(onData) {
+  bldListeners.add(onData);
+  onData(buildingsArray());
+  return () => bldListeners.delete(onData);
+}
+export async function saveBuilding(name, fields) {
+  const key = String(name).trim();
+  if (!key) return;
+  buildings[key] = { name: key, ...(buildings[key] || {}), ...fields, updatedAt: now() };
+  saveBuildings();
+  notifyBuildings();
+}
+export async function deleteBuilding(name) {
+  delete buildings[String(name).trim()];
+  saveBuildings();
+  notifyBuildings();
+}
+
+// ---- Bulk actions -------------------------------------------------
+export async function bulkAddService(barcodes, svc) {
+  for (const bc of barcodes) await addService(bc, svc);
+}
+export async function bulkAppendNote(barcodes, note) {
+  const t = String(note || "").trim();
+  if (!t) return;
+  for (const bc of barcodes) {
+    const u = units[bc];
+    if (!u) continue;
+    u.notes = u.notes ? `${u.notes} • ${t}` : t;
+    u.updatedAt = now();
+  }
+  saveUnits();
+  notifyUnits();
 }

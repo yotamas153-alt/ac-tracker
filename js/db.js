@@ -171,4 +171,86 @@ export async function seedFromLegacy(records) {
   return added;
 }
 
+// ---- Photos (per unit) --------------------------------------------
+const photosCol = (barcode) => collection(db, "units", String(barcode), "photos");
+
+export function watchPhotos(barcode, onData, onError) {
+  const q = query(photosCol(barcode), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err)
+  );
+}
+export async function addPhoto(barcode, url) {
+  await addDoc(photosCol(barcode), { url, createdAt: serverTimestamp() });
+}
+export async function deletePhoto(barcode, id) {
+  await deleteDoc(doc(db, "units", String(barcode), "photos", id));
+}
+
+// ---- Complaints / service requests --------------------------------
+const complaintsCol = () => collection(db, "complaints");
+
+export function watchComplaints(onData, onError) {
+  const q = query(complaintsCol(), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err)
+  );
+}
+export async function addComplaint(data) {
+  const ref = await addDoc(complaintsCol(), {
+    customer:   data.customer?.trim()   || "",
+    phone:      data.phone?.trim()      || "",
+    barcode:    data.barcode?.trim()    || "",
+    building:   data.building?.trim()   || "",
+    description:data.description?.trim()|| "",
+    status:     data.status || "open",
+    createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateComplaint(id, fields) {
+  await updateDoc(doc(db, "complaints", id), { ...fields, updatedAt: serverTimestamp() });
+}
+export async function deleteComplaint(id) {
+  await deleteDoc(doc(db, "complaints", id));
+}
+
+// ---- Buildings (cover photos) -------------------------------------
+const buildingsCol = () => collection(db, "buildings");
+
+export function watchBuildings(onData, onError) {
+  return onSnapshot(buildingsCol(),
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)))),
+    (err) => onError && onError(err)
+  );
+}
+export async function saveBuilding(name, fields) {
+  const key = String(name).trim();
+  if (!key) return;
+  await setDoc(doc(db, "buildings", key),
+    { name: key, ...fields, updatedAt: serverTimestamp() }, { merge: true });
+}
+export async function deleteBuilding(name) {
+  await deleteDoc(doc(db, "buildings", String(name).trim()));
+}
+
+// ---- Bulk actions -------------------------------------------------
+export async function bulkAddService(barcodes, svc) {
+  for (const bc of barcodes) await addService(bc, svc);
+}
+export async function bulkAppendNote(barcodes, note) {
+  const t = String(note || "").trim();
+  if (!t) return;
+  for (const bc of barcodes) {
+    const ref = doc(db, "units", String(bc));
+    const snap = await getDoc(ref);
+    if (!snap.exists()) continue;
+    const prev = snap.data().notes || "";
+    await updateDoc(ref, { notes: prev ? `${prev} • ${t}` : t, updatedAt: serverTimestamp() });
+  }
+}
+
 export { Timestamp };
