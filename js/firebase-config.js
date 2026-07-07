@@ -1,25 +1,17 @@
 // ===================================================================
-//  Firebase configuration
-// -------------------------------------------------------------------
-//  👉 REPLACE the placeholder values below with YOUR Firebase project
-//     config. Full step-by-step instructions are in README.md.
-//
-//  Where to get it:
-//    1. https://console.firebase.google.com  →  Add project
-//    2. Build → Firestore Database → Create database (Production or Test)
-//    3. Project settings (⚙️) → "Your apps" → Web app (</>) → register
-//    4. Copy the firebaseConfig object and paste its values here.
+//  Firebase configuration — ac-tracker
+//  Live project. These web keys are safe to ship publicly (access is
+//  controlled by Firestore security rules, not by hiding the apiKey).
 // ===================================================================
 
 export const firebaseConfig = {
-  apiKey:            "PASTE_API_KEY_HERE",
-  authDomain:        "PASTE_PROJECT.firebaseapp.com",
-  projectId:         "PASTE_PROJECT_ID",
-  storageBucket:     "PASTE_PROJECT.appspot.com",
-  messagingSenderId: "PASTE_SENDER_ID",
-  appId:             "PASTE_APP_ID",
+  apiKey:            "AIzaSyCCoUEZP44iZjQlF3OWDKh6wtO00-VtQPA",
+  authDomain:        "ac-tracker-7c2d5.firebaseapp.com",
+  projectId:         "ac-tracker-7c2d5",
+  storageBucket:     "ac-tracker-7c2d5.firebasestorage.app",
+  messagingSenderId: "516217405996",
+  appId:             "1:516217405996:web:c967c6c2dcbc633ca7c789",
 };
 
-// Leave this as-is. The app checks it to show a friendly setup message
-// until you paste your real config above.
+// The app runs against Firebase when a real apiKey is present.
 export const isConfigured = !firebaseConfig.apiKey.startsWith("PASTE_");
