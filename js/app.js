@@ -13,13 +13,31 @@ const {
   watchPhotos, addPhoto, deletePhoto,
   watchComplaints, addComplaint, updateComplaint, deleteComplaint,
   watchBuildings, saveBuilding, deleteBuilding,
+  watchParts, addPart, updatePart, deletePart,
+  watchProjects, addProject, updateProject, deleteProject,
   bulkAddService, bulkAppendNote,
 } = store;
+
+// ---- Work-status definitions ---------------------------------------
+const STATUS = {
+  not_started:  { label: "לא התחיל",   icon: "⚪", cls: "st-not" },
+  in_progress:  { label: "בתהליך",     icon: "🔧", cls: "st-prog" },
+  completed:    { label: "הושלם",      icon: "✅", cls: "st-done" },
+  waiting_part: { label: "ממתין לחלק", icon: "📦", cls: "st-wait" },
+  issue:        { label: "תקלה",       icon: "⚠️", cls: "st-issue" },
+};
+const STATUS_ORDER = ["not_started", "in_progress", "completed", "waiting_part", "issue"];
+const st = (k) => STATUS[k] || STATUS.not_started;
+
+// common missing-part quick items
+const PART_ITEMS = ["קבל", "מנוע", "גז", "צינור", "כבל", "משאבת ניקוז", "ברגים", "אחר"];
 
 // ---- Local state ---------------------------------------------------
 let UNITS = [];                 // live mirror of the "units" collection
 let COMPLAINTS = [];            // live mirror of complaints
 let BUILDINGS = {};             // { name: {name, cover} } from buildings collection
+let PARTS = [];                 // live mirror of missing parts
+let PROJECTS = [];              // live mirror of scheduled projects
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -96,6 +114,14 @@ function startRealtime() {
     (list) => { BUILDINGS = Object.fromEntries(list.map((b) => [b.name, b])); onUnitsChanged(); },
     (err) => console.error(err)
   );
+  watchParts(
+    (list) => { PARTS = list; if ($("#view-dash").classList.contains("is-active")) renderDashboard(); refreshPartsModal(); },
+    (err) => console.error(err)
+  );
+  watchProjects(
+    (list) => { PROJECTS = list; renderUpcoming(); if ($("#view-dash").classList.contains("is-active")) renderDashboard(); },
+    (err) => console.error(err)
+  );
   if (isConfigured) {
     window.addEventListener("online",  () => setSync("מחובר ✓", "is-online"));
     window.addEventListener("offline", () => setSync("לא מקוון — נשמר מקומית", "is-offline"));
@@ -107,6 +133,7 @@ function onUnitsChanged() {
   renderList();
   renderDashboard();
   if ($("#view-buildings").classList.contains("is-active")) renderBuildings();
+  renderUpcoming();
   // if a search is showing, refresh it live
   if ($("#search").value.trim()) runSearch();
   // if detail modal open, refresh its fields from the latest data
@@ -140,6 +167,7 @@ function wireUI() {
   $("#listFilter").addEventListener("input", debounce(renderList, 120));
   $("#listBack").addEventListener("click", () => switchView("buildings"));
   $("#btnSelect").addEventListener("click", toggleSelectMode);
+  $("#btnParts").addEventListener("click", () => openPartsModal(listContext.building));
   $("#bulkAll").addEventListener("change", (e) => selectAll(e.target.checked));
   $("#bulkNote").addEventListener("click", bulkNotePrompt);
   $("#bulkMaint").addEventListener("click", bulkMaintPrompt);
@@ -240,9 +268,10 @@ function cardHTML(u, selecting = false) {
       <div class="card__body">
         <div class="card__head">
           <span class="card__barcode">${esc(u.barcode)}</span>
-          ${u.location ? `<span class="chip chip--accent">📍 ${esc(u.location)}</span>` : ""}
+          <span class="status-chip ${st(u.status).cls}">${st(u.status).icon} ${st(u.status).label}</span>
         </div>
-        ${u.building ? `<div class="card__row"><b>🏢</b> ${esc(u.building)}</div>` : ""}
+        ${u.building ? `<div class="card__row"><b>🏢</b> ${esc(u.building)}${u.area ? ` · ${esc(u.area)}` : ""}</div>` : ""}
+        ${u.location ? `<div class="card__row"><b>📍</b> ${esc(u.location)}</div>` : ""}
         ${u.lastService ? `<div class="card__row"><b>🔧</b> ${esc(u.lastService)}</div>` : ""}
         ${u.notes ? `<div class="card__row"><b>📝</b> ${esc(u.notes)}</div>` : ""}
         ${tags ? `<div class="card__tags">${tags}</div>` : ""}
@@ -493,6 +522,7 @@ function openDetail(barcode) {
   clearModalSubs();
   const modal = $("#modal");
   modal.dataset.barcode = barcode;
+  modal.dataset.parts = "";
   $("#modalPanel").innerHTML = detailHTML(u);
   modal.hidden = false;
   wireDetail(u);
@@ -518,10 +548,18 @@ function detailHTML(u) {
       <button class="detail__close" data-close>×</button>
     </div>
 
+    <div class="status-picker" id="statusPicker">
+      ${STATUS_ORDER.map((k) => `
+        <button class="status-opt ${st(k).cls} ${u.status === k ? "is-active" : ""}" data-status="${k}">
+          ${st(k).icon}<span>${st(k).label}</span>
+        </button>`).join("")}
+    </div>
+
     <div class="detail__grid" id="detailFields">
       ${field("🏢 מבנה", u.building)}
       ${field("🧊 סוג", u.type)}
       ${field("📍 מיקום", u.location)}
+      ${field("🏗️ קומה / אזור", u.area)}
       ${field("🔖 מק\"ט ישן", u.oldSku)}
       ${field("📝 הערות", u.notes)}
     </div>
@@ -570,6 +608,13 @@ function wireDetail(u) {
     } catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
   });
 
+  $$("#statusPicker .status-opt").forEach((b) => b.addEventListener("click", async () => {
+    const status = b.dataset.status;
+    $$("#statusPicker .status-opt").forEach((x) => x.classList.toggle("is-active", x === b));
+    try { await updateUnit(u.barcode, { status }); u.status = status; toast(`✔️ ${st(status).label}`); }
+    catch (err) { console.error(err); toast("שגיאה בעדכון סטטוס", true); }
+  }));
+
   $("#btnEdit").addEventListener("click", () => openEdit(u));
   $("#btnDelete").addEventListener("click", async () => {
     if (!confirm(`למחוק את המזגן ${u.barcode}? פעולה זו אינה הפיכה.`)) return;
@@ -613,8 +658,8 @@ function refreshDetailFields(u) {
     ? `<div class="detail__field"><span>${label}</span>${esc(val)}</div>` : "";
   box.innerHTML =
     field("🏢 מבנה", u.building) + field("🧊 סוג", u.type) +
-    field("📍 מיקום", u.location) + field("🔖 מק\"ט ישן", u.oldSku) +
-    field("📝 הערות", u.notes);
+    field("📍 מיקום", u.location) + field("🏗️ קומה / אזור", u.area) +
+    field("🔖 מק\"ט ישן", u.oldSku) + field("📝 הערות", u.notes);
 }
 
 function renderTimeline(list) {
@@ -697,6 +742,7 @@ function openEdit(u) {
       <label>מבנה<input name="building" value="${esc(u.building)}"></label>
       <label>סוג<input name="type" value="${esc(u.type)}"></label>
       <label>מיקום<input name="location" value="${esc(u.location)}"></label>
+      <label>קומה / אזור<input name="area" value="${esc(u.area || "")}" placeholder="קומה 1 / גג / אגף..."></label>
       <label>מק"ט ישן<input name="oldSku" value="${esc(u.oldSku)}"></label>
       <label>הערות<textarea name="notes" rows="2">${esc(u.notes)}</textarea></label>
       <div class="detail__actions">
@@ -713,6 +759,7 @@ function openEdit(u) {
         building: f.building.value.trim(),
         type: f.type.value.trim(),
         location: f.location.value.trim(),
+        area: f.area.value.trim(),
         oldSku: f.oldSku.value.trim(),
         notes: f.notes.value.trim(),
       });
@@ -731,6 +778,8 @@ function closeModal() {
   const m = $("#modal");
   m.hidden = true;
   m.dataset.barcode = "";
+  m.dataset.parts = "";
+  partsModalBuilding = null;
   clearModalSubs();
 }
 
@@ -745,7 +794,7 @@ async function onAddSubmit(e) {
   const unit = {
     barcode, building: f.building.value,
     type: f.type.value, location: f.location.value,
-    oldSku: f.oldSku.value, notes: f.notes.value,
+    area: f.area.value, oldSku: f.oldSku.value, notes: f.notes.value,
   };
   if (!barcode) { msg.textContent = "צריך ברקוד"; msg.className = "form-msg is-err"; return; }
 
@@ -774,19 +823,217 @@ function renderDashboard() {
   const box = $("#dashStats");
   if (!box) return;
   const total = UNITS.length;
-  const buildings = countBy(UNITS, "building");
-  const types = countBy(UNITS, "type");
-  const withHistory = UNITS.filter((u) => u.lastService).length;
+  const gc = statusCounts(UNITS);
+  const buildings = [...new Set(UNITS.map((u) => u.building || "ללא"))].sort((a, b) => a.localeCompare(b, "he"));
+  const today = todayISO();
+  const todayWorkers = [...new Set(PROJECTS.filter((p) => p.date === today).map((p) => p.workers).filter(Boolean))];
 
   box.innerHTML = `
     <div class="stat-grid">
       <div class="stat"><div class="stat__num">${total}</div><div class="stat__label">מזגנים סה״כ</div></div>
-      <div class="stat"><div class="stat__num">${Object.keys(buildings).length}</div><div class="stat__label">מבנים</div></div>
-      <div class="stat"><div class="stat__num">${withHistory}</div><div class="stat__label">טופלו</div></div>
-      <div class="stat"><div class="stat__num">${Object.keys(types).length}</div><div class="stat__label">סוגים</div></div>
+      <div class="stat"><div class="stat__num st-done">${gc.completed}</div><div class="stat__label">הושלמו</div></div>
+      <div class="stat"><div class="stat__num st-prog">${gc.in_progress}</div><div class="stat__label">בתהליך</div></div>
+      <div class="stat"><div class="stat__num st-wait">${gc.waiting_part + gc.issue}</div><div class="stat__label">ממתין / תקלה</div></div>
     </div>
-    ${barPanel("🏢 מזגנים לפי מבנה", buildings, total)}
-    ${barPanel("🧊 מזגנים לפי סוג", types, total)}`;
+
+    <div class="panel">
+      <div class="section-head"><h3>🗓️ עבודות מתוכננות</h3><button class="btn btn--primary btn--sm" id="dashAddProject">➕ עבודה</button></div>
+      <div id="dashProjects">${projectsListHTML()}</div>
+    </div>
+
+    ${todayWorkers.length ? `<div class="panel"><h3>👷 עובדים היום</h3><div class="chips-row">${todayWorkers.map((w) => `<span class="chip chip--accent">${esc(w)}</span>`).join("")}</div></div>` : ""}
+
+    <div class="panel">
+      <h3>🏢 סטטוס לפי מבנה</h3>
+      <div class="site-cards">${buildings.map(siteCardHTML).join("")}</div>
+    </div>`;
+
+  $("#dashAddProject").addEventListener("click", () => openProjectForm());
+  $$("#dashProjects .proj-row").forEach((r) => r.addEventListener("click", () => openProjectForm(r.dataset.id)));
+  $$(".site-card").forEach((c) => c.addEventListener("click", () => openBuilding(c.dataset.building === "ללא" ? "ללא" : c.dataset.building)));
+}
+
+function statusCounts(list) {
+  const c = { not_started: 0, in_progress: 0, completed: 0, waiting_part: 0, issue: 0 };
+  list.forEach((u) => { c[STATUS[u.status] ? u.status : "not_started"]++; });
+  return c;
+}
+function buildingUnits(name) { return UNITS.filter((u) => (u.building || "ללא") === name); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function tomorrowISO() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
+
+function siteCardHTML(name) {
+  const list = buildingUnits(name);
+  const c = statusCounts(list);
+  const pct = list.length ? Math.round(c.completed / list.length * 100) : 0;
+  const missing = PARTS.filter((p) => !p.done && (p.building || "") === name).length;
+  const areas = [...new Set(list.map((u) => u.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
+  const areaRows = areas.map((a) => {
+    const al = list.filter((u) => u.area === a);
+    const ac = al.filter((u) => u.status === "completed").length;
+    return `<div class="area-row"><span>${esc(a)}</span><span>${ac}/${al.length}</span></div>
+      <div class="bar"><i style="width:${al.length ? ac / al.length * 100 : 0}%"></i></div>`;
+  }).join("");
+  return `
+    <div class="site-card" data-building="${esc(name)}">
+      <div class="site-card__head"><b>${esc(name)}</b><span class="chip">${c.completed}/${list.length}</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="site-stats">
+        <span class="st-done">✅ ${c.completed}</span>
+        <span class="st-prog">🔧 ${c.in_progress}</span>
+        <span class="st-not">⚪ ${c.not_started}</span>
+        <span class="st-wait">📦 ${c.waiting_part}</span>
+        <span class="st-issue">⚠️ ${c.issue}</span>
+        ${missing ? `<span class="st-miss">🧰 ${missing} חוסרים</span>` : ""}
+      </div>
+      ${areaRows ? `<div class="area-block">${areaRows}</div>` : ""}
+    </div>`;
+}
+
+function projectsListHTML() {
+  const today = todayISO();
+  const upcoming = PROJECTS.filter((p) => !p.date || p.date >= today);
+  if (!upcoming.length) return `<p class="tl-empty">אין עבודות מתוכננות.</p>`;
+  return upcoming.map((p) => {
+    const list = buildingUnits(p.building);
+    const c = statusCounts(list);
+    return `
+      <div class="proj-row" data-id="${esc(p.id)}">
+        <div class="proj-row__main"><b>${esc(p.building || "עבודה")}</b> <span class="chip">${esc(p.date || "")}${p.time ? ` ${esc(p.time)}` : ""}</span></div>
+        <div class="proj-row__meta">${p.workers ? `👷 ${esc(p.workers)}` : ""}${list.length ? ` · ✅ ${c.completed}/${list.length}` : ""}</div>
+      </div>`;
+  }).join("");
+}
+
+// ---- Upcoming Work card (home) ----
+function renderUpcoming() {
+  const el = $("#upcomingCard"); if (!el) return;
+  const today = todayISO();
+  const upcoming = PROJECTS.filter((p) => p.date && p.date >= today)
+    .sort((a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || ""))));
+  if (!upcoming.length) { el.innerHTML = `<div class="upcoming__empty">🗓️ לא נקבעה עבודה.</div>`; return; }
+  const p = upcoming[0];
+  const list = buildingUnits(p.building);
+  const c = statusCounts(list);
+  const pct = list.length ? Math.round(c.completed / list.length * 100) : 0;
+  const dlabel = p.date === today ? "היום" : (p.date === tomorrowISO() ? "מחר" : p.date);
+  el.innerHTML = `
+    <div class="upcoming__card" data-id="${esc(p.id)}">
+      <div class="upcoming__top">
+        <span class="upcoming__tag">🗓️ עבודה קרובה</span>
+        <span class="chip chip--accent">${dlabel}${p.time ? ` · ${esc(p.time)}` : ""}</span>
+      </div>
+      <div class="upcoming__title">🏢 ${esc(p.building || "עבודה")}</div>
+      ${p.location ? `<div class="upcoming__row">📍 ${esc(p.location)}</div>` : ""}
+      ${p.workers ? `<div class="upcoming__row">👷 ${esc(p.workers)}</div>` : ""}
+      ${list.length ? `<div class="upcoming__row">📊 ${c.completed}/${list.length} הושלמו</div><div class="bar"><i style="width:${pct}%"></i></div>` : ""}
+    </div>`;
+  el.querySelector(".upcoming__card").addEventListener("click", () => openProjectForm(p.id));
+}
+
+// ---- Missing parts modal ----
+let partsModalBuilding = null;
+function openPartsModal(building) {
+  partsModalBuilding = building || null;
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = "";
+  modal.dataset.parts = "1";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">🧰 חוסרים${building ? ` — ${esc(building)}` : ""}</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <div class="parts-quick">
+      ${PART_ITEMS.map((it) => `<button class="chip part-quick" data-item="${esc(it)}">➕ ${esc(it)}</button>`).join("")}
+    </div>
+    <form class="svc-form" id="partForm" style="border-top:none;margin-top:8px;padding-top:0">
+      <div class="row"><input name="item" placeholder="פריט חסר" required><input name="note" placeholder="הערה"></div>
+      <button class="btn btn--primary" type="submit">➕ הוסף חוסר</button>
+    </form>
+    <div class="parts-list" id="partsList"></div>`;
+  modal.hidden = false;
+
+  $$(".part-quick").forEach((b) => b.addEventListener("click", async () => {
+    try { await addPart({ building: partsModalBuilding || "", item: b.dataset.item }); toast("➕ נוסף"); }
+    catch (e) { console.error(e); toast("שגיאה", true); }
+  }));
+  $("#partForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (!f.item.value.trim()) return;
+    try { await addPart({ building: partsModalBuilding || "", item: f.item.value, note: f.note.value }); f.reset(); toast("➕ נוסף"); }
+    catch (err) { console.error(err); toast("שגיאה", true); }
+  });
+  refreshPartsModal();
+}
+
+function refreshPartsModal() {
+  const modal = $("#modal");
+  if (modal.hidden || modal.dataset.parts !== "1") return;
+  const box = $("#partsList"); if (!box) return;
+  const b = partsModalBuilding;
+  const list = PARTS.filter((p) => (b ? p.building === b : true));
+  box.innerHTML = list.length
+    ? list.map((p) => `
+        <div class="part-row ${p.done ? "is-done" : ""}" data-id="${esc(p.id)}">
+          <button class="part-check" data-toggle>${p.done ? "✅" : "⬜"}</button>
+          <div class="part-row__body"><b>${esc(p.item)}</b>${p.note ? ` · ${esc(p.note)}` : ""}${(!b && p.building) ? `<div class="part-row__bld">🏢 ${esc(p.building)}</div>` : ""}</div>
+          <button class="part-del" data-del>🗑️</button>
+        </div>`).join("")
+    : `<p class="tl-empty">אין חוסרים רשומים.</p>`;
+  $$(".part-row", box).forEach((row) => {
+    const id = row.dataset.id;
+    const p = PARTS.find((x) => x.id === id);
+    row.querySelector("[data-toggle]").addEventListener("click", async () => {
+      try { await updatePart(id, { done: !p.done }); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+    row.querySelector("[data-del]").addEventListener("click", async () => {
+      try { await deletePart(id); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+  });
+}
+
+// ---- Scheduled project form ----
+function openProjectForm(id) {
+  const p = id ? PROJECTS.find((x) => x.id === id) || {} : {};
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">🗓️ ${id ? "עריכת עבודה" : "עבודה חדשה"}</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="projForm">
+      <label>מבנה / פרויקט<input name="building" list="buildings" value="${esc(p.building || "")}" required placeholder="שם המבנה"></label>
+      <div class="row2">
+        <label>תאריך<input type="date" name="date" value="${esc(p.date || todayISO())}"></label>
+        <label>שעה<input type="time" name="time" value="${esc(p.time || "")}"></label>
+      </div>
+      <label>מיקום<input name="location" value="${esc(p.location || "")}" placeholder="כתובת / אזור"></label>
+      <label>עובדים<input name="workers" value="${esc(p.workers || "")}" placeholder="שמות העובדים"></label>
+      <label>הערות<textarea name="notes" rows="2">${esc(p.notes || "")}</textarea></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💾 שמור</button>
+        ${id ? `<button type="button" class="btn btn--danger" id="projDelete">🗑️ מחק</button>`
+             : `<button type="button" class="btn btn--ghost" data-close>ביטול</button>`}
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#projForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const data = { building: f.building.value, date: f.date.value, time: f.time.value, location: f.location.value, workers: f.workers.value, notes: f.notes.value };
+    if (!data.building.trim()) return;
+    try { if (id) await updateProject(id, data); else await addProject(data); toast("💾 נשמר"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
+  });
+  if (id) $("#projDelete").addEventListener("click", async () => {
+    if (!confirm("למחוק את העבודה?")) return;
+    try { await deleteProject(id); toast("🗑️ נמחק"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
+  });
 }
 
 function barPanel(title, counts, total) {

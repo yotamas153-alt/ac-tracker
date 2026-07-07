@@ -10,18 +10,24 @@ const SVC_KEY     = "ac_services";
 const PHOTO_KEY   = "ac_photos";
 const CMPL_KEY    = "ac_complaints";
 const BLD_KEY     = "ac_buildings";
+const PART_KEY    = "ac_parts";
+const PROJ_KEY    = "ac_projects";
 
 let units = {};        // { barcode: {..fields..} }
 let services = {};      // { barcode: [ {..entry..} ] }
 let photos = {};        // { barcode: [ {id,url,createdAt} ] }
 let complaints = {};    // { id: {..complaint..} }
 let buildings = {};     // { name: {name, cover, updatedAt} }
+let parts = {};         // { id: {building,item,note,done,createdAt} }
+let projects = {};      // { id: {building,date,time,location,workers,createdAt} }
 
 const unitListeners = new Set();               // Set<fn>
 const svcListeners  = new Map();               // barcode -> Set<fn>
 const photoListeners = new Map();              // barcode -> Set<fn>
 const cmplListeners = new Set();               // Set<fn>
 const bldListeners  = new Set();               // Set<fn>
+const partListeners = new Set();               // Set<fn>
+const projListeners = new Set();               // Set<fn>
 
 // ---- persistence --------------------------------------------------
 function load() {
@@ -30,12 +36,16 @@ function load() {
   try { photos     = JSON.parse(localStorage.getItem(PHOTO_KEY) || "{}"); } catch { photos = {}; }
   try { complaints = JSON.parse(localStorage.getItem(CMPL_KEY)  || "{}"); } catch { complaints = {}; }
   try { buildings  = JSON.parse(localStorage.getItem(BLD_KEY)   || "{}"); } catch { buildings = {}; }
+  try { parts      = JSON.parse(localStorage.getItem(PART_KEY)  || "{}"); } catch { parts = {}; }
+  try { projects   = JSON.parse(localStorage.getItem(PROJ_KEY)  || "{}"); } catch { projects = {}; }
 }
 function saveUnits()      { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function saveServices()   { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
 function savePhotos()     { try { localStorage.setItem(PHOTO_KEY, JSON.stringify(photos)); } catch (e) { console.warn("photo storage full", e); } }
 function saveComplaints() { localStorage.setItem(CMPL_KEY, JSON.stringify(complaints)); }
 function saveBuildings()  { try { localStorage.setItem(BLD_KEY, JSON.stringify(buildings)); } catch (e) { console.warn("building storage full", e); } }
+function saveParts()      { localStorage.setItem(PART_KEY, JSON.stringify(parts)); }
+function saveProjects()   { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); }
 
 const now = () => Date.now();
 const newId = () => `s_${now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -82,6 +92,8 @@ export async function saveUnit(unit) {
     location: unit.location?.trim() || "",
     notes:    unit.notes?.trim()    || "",
     oldSku:   unit.oldSku?.trim()   || "",
+    area:     unit.area?.trim()     ?? prev?.area ?? "",
+    status:   unit.status || prev?.status || "not_started",
     lastService:     prev?.lastService     || "",
     lastServiceDate: prev?.lastServiceDate || "",
     createdAt: prev?.createdAt || now(),
@@ -184,6 +196,8 @@ export async function seedFromLegacy(records) {
       location: r["מיקום"] ?? r.location ?? "",
       notes:    r["הערות"] ?? r.notes    ?? "",
       oldSku:   r["מק\"ט ישן"] ?? r.oldSku ?? "",
+      area:     r["קומה"] ?? r.area ?? "",
+      status:   "not_started",
       lastService: r["מה בוצע"] ?? "",
       lastServiceDate: "",
       createdAt: now(),
@@ -290,6 +304,74 @@ export async function deleteBuilding(name) {
   delete buildings[String(name).trim()];
   saveBuildings();
   notifyBuildings();
+}
+
+// ---- Missing parts / equipment ------------------------------------
+function partsArray() {
+  return Object.values(parts).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyParts() { const arr = partsArray(); partListeners.forEach((fn) => fn(arr)); }
+export function watchParts(onData) {
+  partListeners.add(onData);
+  onData(partsArray());
+  return () => partListeners.delete(onData);
+}
+export async function addPart(data) {
+  const id = newId();
+  parts[id] = {
+    id, building: data.building?.trim() || "",
+    item: data.item?.trim() || "", note: data.note?.trim() || "",
+    done: false, createdAt: now(),
+  };
+  saveParts();
+  notifyParts();
+  return id;
+}
+export async function updatePart(id, fields) {
+  if (!parts[id]) return;
+  Object.assign(parts[id], fields);
+  saveParts();
+  notifyParts();
+}
+export async function deletePart(id) {
+  delete parts[id];
+  saveParts();
+  notifyParts();
+}
+
+// ---- Scheduled projects -------------------------------------------
+function projectsArray() {
+  return Object.values(projects).sort((a, b) =>
+    String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || ""))));
+}
+function notifyProjects() { const arr = projectsArray(); projListeners.forEach((fn) => fn(arr)); }
+export function watchProjects(onData) {
+  projListeners.add(onData);
+  onData(projectsArray());
+  return () => projListeners.delete(onData);
+}
+export async function addProject(data) {
+  const id = newId();
+  projects[id] = {
+    id, building: data.building?.trim() || "",
+    date: data.date || "", time: data.time || "",
+    location: data.location?.trim() || "", workers: data.workers?.trim() || "",
+    notes: data.notes?.trim() || "", createdAt: now(),
+  };
+  saveProjects();
+  notifyProjects();
+  return id;
+}
+export async function updateProject(id, fields) {
+  if (!projects[id]) return;
+  Object.assign(projects[id], fields);
+  saveProjects();
+  notifyProjects();
+}
+export async function deleteProject(id) {
+  delete projects[id];
+  saveProjects();
+  notifyProjects();
 }
 
 // ---- Bulk actions -------------------------------------------------

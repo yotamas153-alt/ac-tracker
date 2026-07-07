@@ -62,9 +62,11 @@ export async function saveUnit(unit) {
     location: unit.location?.trim() || "",
     notes:    unit.notes?.trim()    || "",
     oldSku:   unit.oldSku?.trim()   || "",
+    area:     unit.area?.trim()     || "",
     updatedAt: serverTimestamp(),
   };
-  if (!existing.exists()) payload.createdAt = serverTimestamp();
+  if (unit.status) payload.status = unit.status;
+  if (!existing.exists()) { payload.createdAt = serverTimestamp(); if (!payload.status) payload.status = "not_started"; }
   await setDoc(ref, payload, { merge: true });
   return barcode;
 }
@@ -152,6 +154,8 @@ export async function seedFromLegacy(records) {
       location: r["מיקום"] ?? r.location ?? "",
       notes:    r["הערות"] ?? r.notes    ?? "",
       oldSku:   r["מק\"ט ישן"] ?? r.oldSku ?? "",
+      area:     r["קומה"] ?? r.area ?? "",
+      status:   "not_started",
       lastService: r["מה בוצע"] ?? "",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -235,6 +239,51 @@ export async function saveBuilding(name, fields) {
 }
 export async function deleteBuilding(name) {
   await deleteDoc(doc(db, "buildings", String(name).trim()));
+}
+
+// ---- Missing parts / equipment ------------------------------------
+const partsCol = () => collection(db, "parts");
+export function watchParts(onData, onError) {
+  const q = query(partsCol(), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addPart(data) {
+  const ref = await addDoc(partsCol(), {
+    building: data.building?.trim() || "", item: data.item?.trim() || "",
+    note: data.note?.trim() || "", done: false, createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updatePart(id, fields) {
+  await updateDoc(doc(db, "parts", id), fields);
+}
+export async function deletePart(id) {
+  await deleteDoc(doc(db, "parts", id));
+}
+
+// ---- Scheduled projects -------------------------------------------
+const projectsCol = () => collection(db, "projects");
+export function watchProjects(onData, onError) {
+  const q = query(projectsCol(), orderBy("date", "asc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addProject(data) {
+  const ref = await addDoc(projectsCol(), {
+    building: data.building?.trim() || "", date: data.date || "", time: data.time || "",
+    location: data.location?.trim() || "", workers: data.workers?.trim() || "",
+    notes: data.notes?.trim() || "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateProject(id, fields) {
+  await updateDoc(doc(db, "projects", id), fields);
+}
+export async function deleteProject(id) {
+  await deleteDoc(doc(db, "projects", id));
 }
 
 // ---- Bulk actions -------------------------------------------------

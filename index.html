@@ -35,6 +35,7 @@
 
     <!-- View: Search -->
     <section id="view-search" class="view is-active">
+      <div id="upcomingCard" class="upcoming"></div>
       <div class="search-bar">
         <div class="search-field">
           <span class="search-field__icon">🔍</span>
@@ -55,7 +56,10 @@
       <div class="list-head">
         <button class="btn btn--ghost btn--sm" id="listBack" hidden>‹ מבנים</button>
         <h2 id="listTitle">כל המזגנים</h2>
-        <button class="btn btn--ghost btn--sm" id="btnSelect">בחירה</button>
+        <div class="list-head__actions">
+          <button class="btn btn--ghost btn--sm" id="btnParts">🧰 חוסרים</button>
+          <button class="btn btn--ghost btn--sm" id="btnSelect">בחירה</button>
+        </div>
       </div>
       <div class="list-toolbar">
         <input id="listFilter" type="search" placeholder="סנן לפי מבנה / מיקום / סוג">
@@ -102,6 +106,9 @@
         </label>
         <label>מיקום
           <input name="location" placeholder="מיקום מדויק">
+        </label>
+        <label>קומה / אזור
+          <input name="area" placeholder="קומה 1 / גג / אגף (אופציונלי)">
         </label>
         <label>מק"ט ישן
           <input name="oldSku" placeholder="מספר קטלוגי ישן (אופציונלי)">

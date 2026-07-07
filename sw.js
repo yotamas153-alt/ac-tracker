@@ -4,7 +4,7 @@
 //  latest version when online, with a cache fallback for offline use.
 //  (Firestore handles its own data offline separately.)
 // ===================================================================
-const CACHE = "ac-tracker-v2";
+const CACHE = "ac-tracker-v3";
 const SHELL = [
   "./",
   "./index.html",
@@ -42,9 +42,11 @@ self.addEventListener("fetch", (e) => {
   // Only handle same-origin GET requests.
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Network-first: fetch fresh, update cache, fall back to cache offline.
+  // Network-first, and BYPASS the browser HTTP cache ({cache:"reload"}) so a
+  // freshly deployed version always wins when online. Fall back to the SW
+  // cache only when offline.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request.url, { cache: "reload" })
       .then((resp) => {
         const copy = resp.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
