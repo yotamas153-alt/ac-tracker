@@ -15,6 +15,7 @@ const {
   watchBuildings, saveBuilding, deleteBuilding,
   watchParts, addPart, updatePart, deletePart,
   watchProjects, addProject, updateProject, deleteProject,
+  watchUpdates, addUpdate, deleteUpdate,
   bulkAddService, bulkAppendNote,
 } = store;
 
@@ -38,6 +39,7 @@ let COMPLAINTS = [];            // live mirror of complaints
 let BUILDINGS = {};             // { name: {name, cover} } from buildings collection
 let PARTS = [];                 // live mirror of missing parts
 let PROJECTS = [];              // live mirror of scheduled projects
+let UPDATES = [];               // live mirror of team updates
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -206,6 +208,10 @@ function startRealtime() {
     (list) => { PROJECTS = list; renderUpcoming(); if ($("#view-dash").classList.contains("is-active")) renderDashboard(); },
     (err) => console.error(err)
   );
+  watchUpdates(
+    (list) => { UPDATES = list; renderUpdates(); },
+    (err) => console.error(err)
+  );
   if (isConfigured) {
     window.addEventListener("online",  () => setSync("מחובר ✓", "is-online"));
     window.addEventListener("offline", () => setSync("לא מקוון — נשמר מקומית", "is-offline"));
@@ -260,6 +266,9 @@ function wireUI() {
   $("#addForm").addEventListener("submit", onAddSubmit);
   $("#btnScanAdd").addEventListener("click", () =>
     startScan((code) => { $('#addForm [name=barcode]').value = cleanBarcode(code); }));
+
+  // team updates
+  $("#teamAdd").addEventListener("click", openUpdateForm);
 
   // complaints
   $("#btnNewComplaint").addEventListener("click", () => openComplaintForm());
@@ -1019,6 +1028,75 @@ function renderUpcoming() {
       ${list.length ? `<div class="upcoming__row">📊 ${c.completed}/${list.length} הושלמו</div><div class="bar"><i style="width:${pct}%"></i></div>` : ""}
     </div>`;
   el.querySelector(".upcoming__card").addEventListener("click", () => openProjectForm(p.id));
+}
+
+// ---- Team updates widget ----
+function renderUpdates() {
+  const box = $("#teamList"); if (!box) return;
+  const list = UPDATES.slice(0, 3);
+  box.innerHTML = list.length
+    ? list.map((u) => `
+        <div class="team__item" data-id="${esc(u.id)}">
+          <button class="team__x" title="הסר">✕</button>
+          <div class="team__body">
+            <div class="team__text">${esc(u.text)}</div>
+            <div class="team__meta">👤 ${esc(u.author || "צוות")} · ${esc(fmtTime(u.createdAt))}</div>
+          </div>
+        </div>`).join("")
+    : `<p class="team__empty">אין עדכונים.</p>`;
+  $$(".team__x", box).forEach((b) => b.addEventListener("click", async () => {
+    const id = b.closest(".team__item").dataset.id;
+    try { await deleteUpdate(id); } catch (e) { console.error(e); toast("שגיאה בהסרה", true); }
+  }));
+}
+
+function openUpdateForm() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  const name = localStorage.getItem("ac_username") || "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">💬 עדכון חדש</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="updForm">
+      <label>השם שלך<input name="author" value="${esc(name)}" placeholder="שם" required></label>
+      <label>העדכון<textarea name="text" rows="3" required placeholder="לדוגמה: חסרים 6 מטר צנרת"></textarea></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💬 פרסם</button>
+        <button type="button" class="btn btn--ghost" data-close>ביטול</button>
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#updForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const author = f.author.value.trim();
+    const text = f.text.value.trim();
+    if (!text) return;
+    if (author) localStorage.setItem("ac_username", author);
+    try { await addUpdate({ text, author }); toast("💬 העדכון פורסם"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה בפרסום", true); }
+  });
+}
+
+/** Compact Hebrew relative time; handles number (local) and Firestore Timestamp. */
+function fmtTime(ts) {
+  let ms;
+  if (!ts) return "עכשיו";
+  if (typeof ts === "number") ms = ts;
+  else if (ts.toMillis) ms = ts.toMillis();
+  else if (ts.seconds) ms = ts.seconds * 1000;
+  else return "עכשיו";
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "עכשיו";
+  if (m < 60) return `לפני ${m} ד׳`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `לפני ${h} ש׳`;
+  const d = new Date(ms);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
 // ---- Missing parts modal ----

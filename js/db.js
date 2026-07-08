@@ -286,6 +286,24 @@ export async function deleteProject(id) {
   await deleteDoc(doc(db, "projects", id));
 }
 
+// ---- Team updates -------------------------------------------------
+const updatesCol = () => collection(db, "updates");
+export function watchUpdates(onData, onError) {
+  const q = query(updatesCol(), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addUpdate(data) {
+  const ref = await addDoc(updatesCol(), {
+    text: data.text?.trim() || "", author: data.author?.trim() || "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function deleteUpdate(id) {
+  await deleteDoc(doc(db, "updates", id));
+}
+
 // ---- Bulk actions -------------------------------------------------
 export async function bulkAddService(barcodes, svc) {
   for (const bc of barcodes) await addService(bc, svc);

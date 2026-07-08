@@ -12,6 +12,7 @@ const CMPL_KEY    = "ac_complaints";
 const BLD_KEY     = "ac_buildings";
 const PART_KEY    = "ac_parts";
 const PROJ_KEY    = "ac_projects";
+const UPD_KEY     = "ac_updates";
 
 let units = {};        // { barcode: {..fields..} }
 let services = {};      // { barcode: [ {..entry..} ] }
@@ -20,6 +21,7 @@ let complaints = {};    // { id: {..complaint..} }
 let buildings = {};     // { name: {name, cover, updatedAt} }
 let parts = {};         // { id: {building,item,note,done,createdAt} }
 let projects = {};      // { id: {building,date,time,location,workers,createdAt} }
+let updates = {};       // { id: {text,author,createdAt} }
 
 const unitListeners = new Set();               // Set<fn>
 const svcListeners  = new Map();               // barcode -> Set<fn>
@@ -28,6 +30,7 @@ const cmplListeners = new Set();               // Set<fn>
 const bldListeners  = new Set();               // Set<fn>
 const partListeners = new Set();               // Set<fn>
 const projListeners = new Set();               // Set<fn>
+const updListeners  = new Set();               // Set<fn>
 
 // ---- persistence --------------------------------------------------
 function load() {
@@ -38,6 +41,7 @@ function load() {
   try { buildings  = JSON.parse(localStorage.getItem(BLD_KEY)   || "{}"); } catch { buildings = {}; }
   try { parts      = JSON.parse(localStorage.getItem(PART_KEY)  || "{}"); } catch { parts = {}; }
   try { projects   = JSON.parse(localStorage.getItem(PROJ_KEY)  || "{}"); } catch { projects = {}; }
+  try { updates    = JSON.parse(localStorage.getItem(UPD_KEY)   || "{}"); } catch { updates = {}; }
 }
 function saveUnits()      { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function saveServices()   { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
@@ -46,6 +50,7 @@ function saveComplaints() { localStorage.setItem(CMPL_KEY, JSON.stringify(compla
 function saveBuildings()  { try { localStorage.setItem(BLD_KEY, JSON.stringify(buildings)); } catch (e) { console.warn("building storage full", e); } }
 function saveParts()      { localStorage.setItem(PART_KEY, JSON.stringify(parts)); }
 function saveProjects()   { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); }
+function saveUpdates()    { localStorage.setItem(UPD_KEY, JSON.stringify(updates)); }
 
 const now = () => Date.now();
 const newId = () => `s_${now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -372,6 +377,29 @@ export async function deleteProject(id) {
   delete projects[id];
   saveProjects();
   notifyProjects();
+}
+
+// ---- Team updates -------------------------------------------------
+function updatesArray() {
+  return Object.values(updates).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyUpdates() { const arr = updatesArray(); updListeners.forEach((fn) => fn(arr)); }
+export function watchUpdates(onData) {
+  updListeners.add(onData);
+  onData(updatesArray());
+  return () => updListeners.delete(onData);
+}
+export async function addUpdate(data) {
+  const id = newId();
+  updates[id] = { id, text: data.text?.trim() || "", author: data.author?.trim() || "", createdAt: now() };
+  saveUpdates();
+  notifyUpdates();
+  return id;
+}
+export async function deleteUpdate(id) {
+  delete updates[id];
+  saveUpdates();
+  notifyUpdates();
 }
 
 // ---- Bulk actions -------------------------------------------------
