@@ -621,6 +621,18 @@ textarea { resize: vertical; }
 .lg-sched { background: var(--warn); border-radius: 50%; }
 .cal-tip { text-align: center; font-size: 12px; color: var(--faint); margin: 0 0 16px; }
 
+/* export picker */
+.export-list { display: grid; gap: 8px; }
+.export-row {
+  display: flex; align-items: center; gap: 12px; padding: 13px 14px;
+  background: var(--glass); border: 1px solid var(--stroke); border-radius: 12px;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.export-row input { width: 20px; height: 20px; flex: 0 0 auto; }
+.export-name { flex: 1; }
+.export-count { color: var(--muted); font-size: 13px; }
+.export-row.is-empty { opacity: .5; cursor: default; }
+
 /* vehicle inventory */
 .veh-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
 .veh-summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 15px; font-weight: 600; }

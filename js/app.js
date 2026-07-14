@@ -311,7 +311,7 @@ function wireUI() {
   $("#menuBtn").addEventListener("click", () => { $("#sideMenu").hidden = false; });
   $("#sideMenu").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeSideMenu(); });
   $("#menuVehicles").addEventListener("click", () => { closeSideMenu(); switchView("vehicles"); });
-  $("#menuExport").addEventListener("click", () => { closeSideMenu(); exportExcel(); });
+  $("#menuExport").addEventListener("click", () => { closeSideMenu(); openExportForm(); });
   $("#menuVacations").addEventListener("click", () => { closeSideMenu(); switchView("vacations"); });
   $("#menuComplaints").addEventListener("click", () => { closeSideMenu(); switchView("complaints"); });
   $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
@@ -1131,22 +1131,56 @@ function vehRow(i) {
 // ===================================================================
 //  Excel export (SheetJS) — download or share (email/WhatsApp) on mobile
 // ===================================================================
-async function exportExcel() {
+const EXPORT_SETS = [
+  { key: "units", sheet: "מזגנים", rows: () => UNITS.map((u) => ({
+      "ברקוד": u.barcode, "מבנה": u.building || "", "קומה/אזור": u.area || "", "סוג": u.type || "",
+      "מיקום": u.location || "", "סטטוס": (STATUS[u.status] || STATUS.not_started).label, "הערות": u.notes || "",
+      "מק\"ט ישן": u.oldSku || "", "טיפול אחרון": u.lastService || "" })) },
+  { key: "vehicles", sheet: "מלאי רכבים", rows: () => VEHICLE_ITEMS.map((i) => ({ "עובד": i.owner, "פריט": i.item, "סטטוס": i.missing ? "חסר" : "יש" })) },
+  { key: "parts", sheet: "חוסרים במבנים", rows: () => PARTS.map((p) => ({ "מבנה": p.building || "", "פריט": p.item, "הערה": p.note || "", "סטטוס": p.done ? "סופק" : "חסר" })) },
+  { key: "complaints", sheet: "תקלות", rows: () => COMPLAINTS.map((c) => ({ "לקוח": c.customer || "", "טלפון": c.phone || "", "מבנה": c.building || "", "ברקוד": c.barcode || "", "תיאור": c.description || "", "סטטוס": c.status === "done" ? "טופל" : "פתוח" })) },
+  { key: "vacations", sheet: "חופשות", rows: () => VACATIONS.map((v) => ({ "עובד": v.name, "מתאריך": v.from, "עד": v.to, "סטטוס": v.status, "הערה": v.note || "" })) },
+  { key: "workdays", sheet: "ימי עבודה", rows: () => WORKDAYS.map((w) => ({ "תאריך": w.date, "הערה": w.note || "" })) },
+  { key: "projects", sheet: "עבודות מתוכננות", rows: () => PROJECTS.map((p) => ({ "מבנה": p.building || "", "תאריך": p.date || "", "שעה": p.time || "", "מיקום": p.location || "", "עובדים": p.workers || "", "הערות": p.notes || "" })) },
+];
+
+// choose-what-to-export picker
+function openExportForm() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  const sets = EXPORT_SETS.map((s) => ({ ...s, n: s.rows().length }));
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head"><div class="detail__barcode">📊 ייצוא לאקסל</div><button class="detail__close" data-close>×</button></div>
+    <p class="about__muted" style="margin:0 0 12px">בחר מה לייצא:</p>
+    <div class="export-list">
+      ${sets.map((s) => `
+        <label class="export-row ${s.n ? "" : "is-empty"}">
+          <input type="checkbox" value="${s.key}" ${s.n ? "checked" : "disabled"}>
+          <span class="export-name">${esc(s.sheet)}</span>
+          <span class="export-count">${s.n}</span>
+        </label>`).join("")}
+    </div>
+    <div class="detail__actions" style="margin-top:16px">
+      <button class="btn btn--primary" id="exportGo">📤 ייצא</button>
+      <button type="button" class="btn btn--ghost" data-close>ביטול</button>
+    </div>`;
+  modal.hidden = false;
+  $("#exportGo").addEventListener("click", async () => {
+    const keys = $$("#modalPanel .export-row input:checked").map((c) => c.value);
+    if (!keys.length) { toast("לא נבחר דבר לייצוא", true); return; }
+    closeModal();
+    await exportExcel(keys);
+  });
+}
+
+async function exportExcel(keys) {
   if (typeof XLSX === "undefined") { toast("הייצוא אינו זמין (נדרש חיבור לאינטרנט)", true); return; }
-  const stLabel = (k) => (STATUS[k] || STATUS.not_started).label;
   const wb = XLSX.utils.book_new();
-  const add = (name, rows) => { if (rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name); };
-
-  add("מזגנים", UNITS.map((u) => ({
-    "ברקוד": u.barcode, "מבנה": u.building || "", "קומה/אזור": u.area || "", "סוג": u.type || "",
-    "מיקום": u.location || "", "סטטוס": stLabel(u.status), "הערות": u.notes || "",
-    "מק\"ט ישן": u.oldSku || "", "טיפול אחרון": u.lastService || "",
-  })));
-  add("מלאי רכבים", VEHICLE_ITEMS.map((i) => ({ "עובד": i.owner, "פריט": i.item, "סטטוס": i.missing ? "חסר" : "יש" })));
-  add("חוסרים במבנים", PARTS.map((p) => ({ "מבנה": p.building || "", "פריט": p.item, "הערה": p.note || "", "סטטוס": p.done ? "סופק" : "חסר" })));
-  add("תקלות", COMPLAINTS.map((c) => ({ "לקוח": c.customer || "", "טלפון": c.phone || "", "מבנה": c.building || "", "ברקוד": c.barcode || "", "תיאור": c.description || "", "סטטוס": c.status === "done" ? "טופל" : "פתוח" })));
-  add("חופשות", VACATIONS.map((v) => ({ "עובד": v.name, "מתאריך": v.from, "עד": v.to, "סטטוס": v.status, "הערה": v.note || "" })));
-
+  EXPORT_SETS.filter((s) => keys.includes(s.key)).forEach((s) => {
+    const rows = s.rows();
+    if (rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), s.sheet);
+  });
   if (!wb.SheetNames.length) { toast("אין נתונים לייצוא", true); return; }
 
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
