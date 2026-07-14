@@ -10,7 +10,7 @@ const store = isConfigured ? await import("./db.js") : await import("./local-sto
 const {
   initDb, watchUnits, saveUnit, updateUnit, deleteUnit,
   watchServices, addService, updateService, deleteService, seedFromLegacy,
-  watchPhotos, addPhoto, deletePhoto,
+  watchPhotos, addPhoto, deletePhoto, uploadUnitPhoto,
   watchComplaints, addComplaint, updateComplaint, deleteComplaint,
   watchBuildings, saveBuilding, deleteBuilding,
   watchParts, addPart, updatePart, deletePart,
@@ -45,6 +45,7 @@ let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
 let listContext = { building: null };  // which building the list is showing (null = all)
 let selectMode = false;
+let pendingPhotoFile = null;
 const selected = new Set();     // barcodes selected for bulk actions
 
 const $  = (sel, root = document) => root.querySelector(sel);
@@ -261,11 +262,19 @@ function wireUI() {
   $("#bulkAll").addEventListener("change", (e) => selectAll(e.target.checked));
   $("#bulkNote").addEventListener("click", bulkNotePrompt);
   $("#bulkMaint").addEventListener("click", bulkMaintPrompt);
-
-  // add form
+// add form
   $("#addForm").addEventListener("submit", onAddSubmit);
   $("#btnScanAdd").addEventListener("click", () =>
     startScan((code) => { $('#addForm [name=barcode]').value = cleanBarcode(code); }));
+  $("#btnAddPhoto").addEventListener("click", () => $("#addPhotoInput").click());
+  $("#addPhotoInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pendingPhotoFile = file;
+    $("#addPhotoPreview").src = URL.createObjectURL(file);
+    $("#addPhotoPreview").hidden = false;
+    $("#addPhotoStatus").textContent = "📷 תמונה מוכנה להעלאה";
+  });
 
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
@@ -896,6 +905,20 @@ async function onAddSubmit(e) {
 
   try {
     await saveUnit(unit);
+
+    if (pendingPhotoFile) {
+      try {
+        const url = await uploadUnitPhoto(barcode, pendingPhotoFile);
+        await addPhoto(barcode, url);
+      } catch (photoErr) {
+        console.error(photoErr);
+        toast("המזגן נשמר, אך העלאת התמונה נכשלה", true);
+      }
+      pendingPhotoFile = null;
+      $("#addPhotoPreview").hidden = true;
+      $("#addPhotoStatus").textContent = "";
+    }
+
     f.reset();
     msg.textContent = "✅ נשמר בהצלחה!";
     msg.className = "form-msg is-ok";
