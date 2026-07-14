@@ -15,7 +15,6 @@
 </head>
 
 <body>
-  <!-- ===== App header ===== -->
   <header class="app-header">
     <div class="app-header__title">
       <span class="app-header__logo">❄️</span>
@@ -27,13 +26,10 @@
     <div id="syncStatus" class="sync-badge" title="מצב חיבור"><i></i><span>···</span></div>
   </header>
 
-  <!-- Time-based greeting -->
   <div id="greeting" class="greeting"></div>
 
-  <!-- ===== Main content (views swap in here) ===== -->
   <main id="app" class="app-main">
 
-    <!-- View: Search -->
     <section id="view-search" class="view is-active">
       <div id="upcomingCard" class="upcoming"></div>
       <div class="search-bar">
@@ -44,7 +40,6 @@
         <button id="btnScan" class="btn btn--scan" title="סרוק ברקוד">📷</button>
       </div>
 
-      <!-- Team Updates widget -->
       <div id="teamUpdates" class="team">
         <div class="team__head">
           <span>💬 עדכוני צוות</span>
@@ -56,127 +51,4 @@
       <div id="searchResults" class="results"></div>
     </section>
 
-    <!-- View: Buildings -->
     <section id="view-buildings" class="view">
-      <div id="buildingsGrid" class="bld-grid"></div>
-    </section>
-
-    <!-- View: All units / building drill-down (with bulk select) -->
-    <section id="view-list" class="view">
-      <div class="list-head">
-        <button class="btn btn--ghost btn--sm" id="listBack" hidden>‹ מבנים</button>
-        <h2 id="listTitle">כל המזגנים</h2>
-        <div class="list-head__actions">
-          <button class="btn btn--ghost btn--sm" id="btnParts">🧰 חוסרים</button>
-          <button class="btn btn--ghost btn--sm" id="btnSelect">בחירה</button>
-        </div>
-      </div>
-      <div class="list-toolbar">
-        <input id="listFilter" type="search" placeholder="סנן לפי מבנה / מיקום / סוג">
-        <span id="listCount" class="chip">0</span>
-      </div>
-      <div id="bulkBar" class="bulk-bar" hidden>
-        <label class="bulk-all"><input type="checkbox" id="bulkAll"> בחר הכל</label>
-        <span id="bulkCount" class="chip">0</span>
-        <button class="btn btn--sm" id="bulkNote">➕ הערה</button>
-        <button class="btn btn--sm btn--primary" id="bulkMaint">🔧 טיפול</button>
-      </div>
-      <div id="listResults" class="results"></div>
-    </section>
-
-    <!-- View: Complaints / service requests -->
-    <section id="view-complaints" class="view">
-      <div class="section-head">
-        <h2>📣 תקלות ופניות</h2>
-        <button class="btn btn--primary btn--sm" id="btnNewComplaint">➕ פנייה</button>
-      </div>
-      <div class="cmpl-filter">
-        <button class="seg is-active" data-cf="open">פתוחות</button>
-        <button class="seg" data-cf="all">הכל</button>
-        <button class="seg" data-cf="done">טופלו</button>
-      </div>
-      <div id="complaintsList" class="results"></div>
-    </section>
-
-    <!-- View: Add unit -->
-    <section id="view-add" class="view">
-      <form id="addForm" class="form">
-        <h2>➕ הוספת מזגן</h2>
-        <label>ברקוד
-          <div class="input-with-btn">
-            <input name="barcode" required placeholder="מספר ברקוד">
-            <button type="button" id="btnScanAdd" class="btn btn--icon" title="סרוק">📷</button>
-          </div>
-        </label>
-        <label>מבנה
-          <input name="building" list="buildings" placeholder="שם המבנה">
-        </label>
-        <label>סוג
-          <input name="type" list="types" placeholder="עילי / מיני / מרכזי...">
-        </label>
-        <label>מיקום
-          <input name="location" placeholder="מיקום מדויק">
-        </label>
-        <label>קומה / אזור
-          <input name="area" placeholder="קומה 1 / גג / אגף (אופציונלי)">
-        </label>
-        <label>מק"ט ישן
-          <input name="oldSku" placeholder="מספר קטלוגי ישן (אופציונלי)">
-        </label>
-        <label>הערות
-          <textarea name="notes" rows="2" placeholder="הערות כלליות"></textarea>
-        </label>
-        <button type="submit" class="btn btn--primary">💾 שמור מזגן</button>
-        <p id="addMsg" class="form-msg"></p>
-      </form>
-    </section>
-
-    <!-- View: Dashboard -->
-    <section id="view-dash" class="view">
-      <div id="dashStats" class="dash"></div>
-    </section>
-
-  </main>
-
-  <!-- ===== Detail / edit modal ===== -->
-  <div id="modal" class="modal" hidden>
-    <div class="modal__backdrop" data-close></div>
-    <div class="modal__panel" id="modalPanel"></div>
-  </div>
-
-  <!-- ===== Bottom navigation ===== -->
-  <nav class="tabbar">
-    <button class="tab is-active" data-view="search">🔍<span>חיפוש</span></button>
-    <button class="tab" data-view="buildings">🏢<span>מבנים</span></button>
-    <button class="tab" data-view="add">➕<span>הוספה</span></button>
-    <button class="tab" data-view="complaints">📣<span>תקלות</span></button>
-    <button class="tab" data-view="dash">📊<span>דוח</span></button>
-  </nav>
-
-  <!-- datalists populated from existing data for quick entry -->
-  <datalist id="buildings"></datalist>
-  <datalist id="types"></datalist>
-
-  <!-- Toast -->
-  <div id="toast" class="toast" hidden></div>
-
-  <!-- ===== Global barcode scanner overlay ===== -->
-  <div id="scanOverlay" class="scan-overlay" hidden>
-    <div class="scan-overlay__bar">
-      <span>📷 סריקת ברקוד / QR</span>
-      <button id="scanClose" class="scan-overlay__close" title="סגור">×</button>
-    </div>
-    <div id="scanReader" class="scan-reader"></div>
-    <p class="scan-hint">כוון את המצלמה אל הברקוד או קוד ה-QR שעל המזגן</p>
-    <form id="scanManual" class="scan-manual">
-      <input name="manual" autocomplete="off" placeholder="או הקלד ברקוד ידנית…">
-      <button class="btn btn--primary" type="submit">אישור</button>
-    </form>
-  </div>
-
-  <!-- Barcode scanning library (global) -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <!-- App (ES modules) -->
-  <script type="module" src="js/app.js"></script>
-</body>
-</html>
