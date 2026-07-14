@@ -1,7 +1,5 @@
 // ===================================================================
 //  db.js — Firestore data layer
-//  All reads/writes to the cloud database go through this module.
-//  Uses the Firebase v10 modular SDK loaded from Google's CDN.
 // ===================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -11,36 +9,37 @@ import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
   addDoc, onSnapshot, query, orderBy, serverTimestamp, Timestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 import { firebaseConfig, isConfigured } from "./firebase-config.js";
 
 export { isConfigured };
 
 let db = null;
+let storage = null;
 
-/** Initialise Firebase + Firestore (with offline persistence). */
 export function initDb() {
   if (!isConfigured) return null;
   const app = initializeApp(firebaseConfig);
-  // Offline-first: cache keeps the app working with no signal in the field
-  // and syncs automatically when the connection returns.
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
+  storage = getStorage(app);
   return db;
+}
+
+/** מעלה תמונה ל-Firebase Storage (לא נשמרת בדיסק המכשיר) ומחזירה URL. */
+export async function uploadUnitPhoto(barcode, file) {
+  const path = `units/${barcode}/${Date.now()}.jpg`;
+  const ref = sRef(storage, path);
+  await uploadBytes(ref, file);
+  return await getDownloadURL(ref);
 }
 
 const unitsCol = () => collection(db, "units");
 const servicesCol = (barcode) => collection(db, "units", String(barcode), "services");
 
-// ---- Units --------------------------------------------------------
-
-/**
- * Subscribe to ALL units in real time.
- * @param {(units: object[]) => void} onData  called on every change
- * @param {(err: Error) => void} onError
- * @returns {() => void} unsubscribe
- */
 export function watchUnits(onData, onError) {
   const q = query(unitsCol(), orderBy("updatedAt", "desc"));
   return onSnapshot(q,
@@ -49,7 +48,6 @@ export function watchUnits(onData, onError) {
   );
 }
 
-/** Create or fully overwrite a unit. Uses the barcode as the document id. */
 export async function saveUnit(unit) {
   const barcode = String(unit.barcode).trim();
   if (!barcode) throw new Error("ברקוד חסר");
@@ -71,21 +69,15 @@ export async function saveUnit(unit) {
   return barcode;
 }
 
-/** Patch a subset of fields on a unit. */
 export async function updateUnit(barcode, fields) {
   const ref = doc(db, "units", String(barcode));
   await updateDoc(ref, { ...fields, updatedAt: serverTimestamp() });
 }
 
-/** Delete a unit (note: service subcollection docs are left as orphans in
- *  Firestore — fine for personal scale; a Cloud Function could cascade). */
 export async function deleteUnit(barcode) {
   await deleteDoc(doc(db, "units", String(barcode)));
 }
 
-// ---- Service history ----------------------------------------------
-
-/** Watch the service log for one unit, newest first. */
 export function watchServices(barcode, onData, onError) {
   const q = query(servicesCol(barcode), orderBy("date", "desc"));
   return onSnapshot(q,
@@ -94,7 +86,6 @@ export function watchServices(barcode, onData, onError) {
   );
 }
 
-/** Add a service entry AND update the unit's "last service" summary. */
 export async function addService(barcode, { date, description, technician }) {
   await addDoc(servicesCol(barcode), {
     date: date || new Date().toISOString().slice(0, 10),
@@ -108,7 +99,6 @@ export async function addService(barcode, { date, description, technician }) {
   });
 }
 
-/** Edit an existing service entry, then refresh the unit summary. */
 export async function updateService(barcode, id, fields) {
   const ref = doc(db, "units", String(barcode), "services", id);
   await updateDoc(ref, {
@@ -119,13 +109,11 @@ export async function updateService(barcode, id, fields) {
   await recomputeLast(barcode);
 }
 
-/** Delete a service entry, then refresh the unit summary. */
 export async function deleteService(barcode, id) {
   await deleteDoc(doc(db, "units", String(barcode), "services", id));
   await recomputeLast(barcode);
 }
 
-/** Recompute a unit's "last service" from its newest remaining entry. */
 async function recomputeLast(barcode) {
   const q = query(servicesCol(barcode), orderBy("date", "desc"));
   const snap = await getDocs(q);
@@ -136,10 +124,6 @@ async function recomputeLast(barcode) {
   });
 }
 
-// ---- One-time seed / migration ------------------------------------
-
-/** Import an array of legacy records (Hebrew keys) into Firestore.
- *  Safe to run once; skips barcodes that already exist. */
 export async function seedFromLegacy(records) {
   let added = 0;
   for (const r of records) {
@@ -160,7 +144,6 @@ export async function seedFromLegacy(records) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    // preserve the original "what was done" as the first history entry
     const done = (r["מה בוצע"] ?? "").trim();
     if (done) {
       await addDoc(servicesCol(barcode), {
@@ -175,7 +158,6 @@ export async function seedFromLegacy(records) {
   return added;
 }
 
-// ---- Photos (per unit) --------------------------------------------
 const photosCol = (barcode) => collection(db, "units", String(barcode), "photos");
 
 export function watchPhotos(barcode, onData, onError) {
@@ -192,7 +174,6 @@ export async function deletePhoto(barcode, id) {
   await deleteDoc(doc(db, "units", String(barcode), "photos", id));
 }
 
-// ---- Complaints / service requests --------------------------------
 const complaintsCol = () => collection(db, "complaints");
 
 export function watchComplaints(onData, onError) {
@@ -221,7 +202,6 @@ export async function deleteComplaint(id) {
   await deleteDoc(doc(db, "complaints", id));
 }
 
-// ---- Buildings (cover photos) -------------------------------------
 const buildingsCol = () => collection(db, "buildings");
 
 export function watchBuildings(onData, onError) {
@@ -241,7 +221,6 @@ export async function deleteBuilding(name) {
   await deleteDoc(doc(db, "buildings", String(name).trim()));
 }
 
-// ---- Missing parts / equipment ------------------------------------
 const partsCol = () => collection(db, "parts");
 export function watchParts(onData, onError) {
   const q = query(partsCol(), orderBy("createdAt", "desc"));
@@ -263,7 +242,6 @@ export async function deletePart(id) {
   await deleteDoc(doc(db, "parts", id));
 }
 
-// ---- Scheduled projects -------------------------------------------
 const projectsCol = () => collection(db, "projects");
 export function watchProjects(onData, onError) {
   const q = query(projectsCol(), orderBy("date", "asc"));
@@ -286,7 +264,6 @@ export async function deleteProject(id) {
   await deleteDoc(doc(db, "projects", id));
 }
 
-// ---- Team updates -------------------------------------------------
 const updatesCol = () => collection(db, "updates");
 export function watchUpdates(onData, onError) {
   const q = query(updatesCol(), orderBy("createdAt", "desc"));
@@ -304,7 +281,6 @@ export async function deleteUpdate(id) {
   await deleteDoc(doc(db, "updates", id));
 }
 
-// ---- Bulk actions -------------------------------------------------
 export async function bulkAddService(barcodes, svc) {
   for (const bc of barcodes) await addService(bc, svc);
 }
