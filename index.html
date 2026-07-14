@@ -24,7 +24,10 @@
         <p>ניהול מזגנים</p>
       </div>
     </div>
-    <div id="syncStatus" class="sync-badge" title="מצב חיבור"><i></i><span>···</span></div>
+    <div class="app-header__right">
+      <div id="syncStatus" class="sync-badge" title="מצב חיבור"><i></i><span>···</span></div>
+      <button id="menuBtn" class="menu-btn" title="תפריט" aria-label="תפריט">☰</button>
+    </div>
   </header>
 
   <!-- Time-based greeting -->
@@ -167,6 +170,22 @@
 
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
+
+  <!-- ===== Side menu (extra tools & settings) ===== -->
+  <div id="sideMenu" class="side" hidden>
+    <div class="side__backdrop" data-close></div>
+    <nav class="side__panel">
+      <div class="side__head">
+        <span>☰ תפריט</span>
+        <button class="side__close" data-close aria-label="סגור">×</button>
+      </div>
+      <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
+      <button class="side__item" id="menuParts">🧰 <span>חוסרים — כל המבנים</span></button>
+      <button class="side__item" id="menuWorkdays">🗓️ <span>ימי עבודה בפרויקט</span></button>
+      <button class="side__item" id="menuRecover">🛟 <span>שחזור מזגנים מקומיים</span></button>
+      <button class="side__item" id="menuAbout">ℹ️ <span>אודות</span></button>
+    </nav>
+  </div>
 
   <!-- ===== Global barcode scanner overlay ===== -->
   <div id="scanOverlay" class="scan-overlay" hidden>

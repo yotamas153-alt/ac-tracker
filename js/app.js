@@ -285,6 +285,15 @@ function wireUI() {
     $("#addPhotoStatus").textContent = "📷 התמונה תישמר עם המזגן";
   });
 
+  // side menu
+  $("#menuBtn").addEventListener("click", () => { $("#sideMenu").hidden = false; });
+  $("#sideMenu").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeSideMenu(); });
+  $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
+  $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
+  $("#menuWorkdays").addEventListener("click", () => { closeSideMenu(); switchView("dash"); });
+  $("#menuRecover").addEventListener("click", () => { closeSideMenu(); switchView("dash"); setTimeout(runRecoveryDiag, 200); });
+  $("#menuAbout").addEventListener("click", () => { closeSideMenu(); openAbout(); });
+
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
 
@@ -1117,6 +1126,53 @@ function renderUpcoming() {
       ${list.length ? `<div class="upcoming__row">📊 ${c.completed}/${list.length} הושלמו</div><div class="bar"><i style="width:${pct}%"></i></div>` : ""}
     </div>`;
   el.querySelector(".upcoming__card").addEventListener("click", () => openProjectForm(p.id));
+}
+
+// ---- Side menu screens ----
+function closeSideMenu() { $("#sideMenu").hidden = true; }
+
+function openNameForm() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  const name = localStorage.getItem("ac_username") || "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">👤 השם שלי</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="nameForm">
+      <label>השם שלך (יופיע ליד עדכונים ופעולות)<input name="name" value="${esc(name)}" placeholder="שם" required></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💾 שמור</button>
+        <button type="button" class="btn btn--ghost" data-close>ביטול</button>
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#nameForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = e.target.name.value.trim();
+    if (v) localStorage.setItem("ac_username", v);
+    toast("💾 השם נשמר"); closeModal();
+  });
+}
+
+function openAbout() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">ℹ️ אודות</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <div class="about">
+      <p><b>❄️ AC Tracker</b> — ניהול מזגנים</p>
+      <p>לחברת <b>ג.פ מיזוגים</b></p>
+      <p>סה״כ מזגנים במערכת: <b>${UNITS.length}</b></p>
+      <p class="about__muted">מחובר לענן · סנכרון בזמן אמת לכל המכשירים</p>
+    </div>`;
+  modal.hidden = false;
 }
 
 // ---- Team updates widget ----
