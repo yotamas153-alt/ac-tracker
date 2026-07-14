@@ -595,6 +595,32 @@ textarea { resize: vertical; }
 .stat__num.st-prog { -webkit-text-fill-color: #60a5fa; }
 .stat__num.st-wait { -webkit-text-fill-color: var(--warn); }
 
+/* calendar */
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.cal-title { font-size: 18px; font-weight: 800; }
+.cal-nav {
+  width: 42px; height: 42px; border-radius: 12px; cursor: pointer; font-size: 22px;
+  background: var(--glass); border: 1px solid var(--stroke); color: var(--text);
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-wd { margin-bottom: 6px; }
+.cal-wdh { text-align: center; font-size: 12px; color: var(--muted); font-weight: 700; padding: 4px 0; }
+.cal-cell {
+  position: relative; aspect-ratio: 1; border-radius: 12px; cursor: pointer; font-family: inherit;
+  background: var(--glass); border: 1px solid var(--stroke); color: var(--text);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
+}
+.cal-cell--empty { background: transparent; border: none; cursor: default; }
+.cal-cell.is-today { border-color: var(--accent); }
+.cal-cell.is-worked { background: var(--grad); color: #061223; border-color: transparent; }
+.cal-dot { position: absolute; bottom: 6px; inset-inline: 0; margin: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.cal-cell.is-worked .cal-dot { background: #061223; }
+.cal-legend { display: flex; gap: 18px; justify-content: center; margin: 14px 0 4px; font-size: 13px; color: var(--muted); }
+.cal-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: middle; margin-inline-end: 5px; }
+.lg-worked { background: var(--grad); }
+.lg-sched { background: var(--warn); border-radius: 50%; }
+.cal-tip { text-align: center; font-size: 12px; color: var(--faint); margin: 0 0 16px; }
+
 /* workdays log */
 .wd-summary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
 .wd-count {

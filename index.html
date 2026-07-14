@@ -142,7 +142,12 @@
       </form>
     </section>
 
-    <!-- View: Dashboard -->
+    <!-- View: Calendar / schedule / workdays -->
+    <section id="view-calendar" class="view">
+      <div id="calendarBody"></div>
+    </section>
+
+    <!-- View: Dashboard (status only) -->
     <section id="view-dash" class="view">
       <div id="dashStats" class="dash"></div>
     </section>
@@ -160,7 +165,7 @@
     <button class="tab is-active" data-view="search">🔍<span>חיפוש</span></button>
     <button class="tab" data-view="buildings">🏢<span>מבנים</span></button>
     <button class="tab" data-view="add">➕<span>הוספה</span></button>
-    <button class="tab" data-view="complaints">📣<span>תקלות</span></button>
+    <button class="tab" data-view="calendar">📅<span>יומן</span></button>
     <button class="tab" data-view="dash">📊<span>דוח</span></button>
   </nav>
 
@@ -179,9 +184,9 @@
         <span>☰ תפריט</span>
         <button class="side__close" data-close aria-label="סגור">×</button>
       </div>
-      <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
+      <button class="side__item" id="menuComplaints">📣 <span>תקלות ופניות</span></button>
       <button class="side__item" id="menuParts">🧰 <span>חוסרים — כל המבנים</span></button>
-      <button class="side__item" id="menuWorkdays">🗓️ <span>ימי עבודה בפרויקט</span></button>
+      <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
       <button class="side__item" id="menuRecover">🛟 <span>שחזור מזגנים מקומיים</span></button>
       <button class="side__item" id="menuAbout">ℹ️ <span>אודות</span></button>
     </nav>

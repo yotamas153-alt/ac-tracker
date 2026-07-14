@@ -208,7 +208,11 @@ function startRealtime() {
     (err) => console.error(err)
   );
   watchProjects(
-    (list) => { PROJECTS = list; renderUpcoming(); if ($("#view-dash").classList.contains("is-active")) renderDashboard(); },
+    (list) => {
+      PROJECTS = list; renderUpcoming();
+      if ($("#view-calendar").classList.contains("is-active")) renderCalendar();
+      if ($("#view-dash").classList.contains("is-active")) renderDashboard();
+    },
     (err) => console.error(err)
   );
   watchUpdates(
@@ -216,7 +220,7 @@ function startRealtime() {
     (err) => console.error(err)
   );
   watchWorkdays(
-    (list) => { WORKDAYS = list; if ($("#view-dash").classList.contains("is-active")) renderDashboard(); },
+    (list) => { WORKDAYS = list; if ($("#view-calendar").classList.contains("is-active")) renderCalendar(); },
     (err) => console.error(err)
   );
   if (isConfigured) {
@@ -288,10 +292,10 @@ function wireUI() {
   // side menu
   $("#menuBtn").addEventListener("click", () => { $("#sideMenu").hidden = false; });
   $("#sideMenu").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeSideMenu(); });
-  $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
+  $("#menuComplaints").addEventListener("click", () => { closeSideMenu(); switchView("complaints"); });
   $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
-  $("#menuWorkdays").addEventListener("click", () => { closeSideMenu(); switchView("dash"); });
-  $("#menuRecover").addEventListener("click", () => { closeSideMenu(); switchView("dash"); setTimeout(runRecoveryDiag, 200); });
+  $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
+  $("#menuRecover").addEventListener("click", () => { closeSideMenu(); openRecoveryScreen(); });
   $("#menuAbout").addEventListener("click", () => { closeSideMenu(); openAbout(); });
 
   // team updates
@@ -317,6 +321,8 @@ function switchView(name) {
   stopScan();
   if (name === "buildings") renderBuildings();
   if (name === "complaints") renderComplaints();
+  if (name === "calendar") renderCalendar();
+  if (name === "dash") renderDashboard();
   if (name === "list") renderList();
   // leaving the list resets bulk selection
   if (name !== "list" && selectMode) exitSelectMode();
@@ -948,6 +954,92 @@ async function onAddSubmit(e) {
 // ===================================================================
 //  Dashboard
 // ===================================================================
+// ===================================================================
+//  Calendar view (month grid + schedule + workdays)
+// ===================================================================
+const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+const HE_WD = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+const pad2 = (n) => String(n).padStart(2, "0");
+let calState = null;
+
+function renderCalendar() {
+  const box = $("#calendarBody"); if (!box) return;
+  if (!calState) { const d = new Date(); calState = { y: d.getFullYear(), m: d.getMonth() }; }
+  const { y, m } = calState;
+  const firstDow = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  const worked = new Set(WORKDAYS.map((w) => w.date));
+  const sched = new Set(PROJECTS.map((p) => p.date).filter(Boolean));
+  const today = todayISO();
+  let cells = "";
+  for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-cell--empty"></div>`;
+  for (let d = 1; d <= days; d++) {
+    const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    cells += `<button class="cal-cell ${worked.has(iso) ? "is-worked" : ""} ${iso === today ? "is-today" : ""}" data-iso="${iso}">
+      <span class="cal-num">${d}</span>${sched.has(iso) ? `<span class="cal-dot"></span>` : ""}
+    </button>`;
+  }
+  box.innerHTML = `
+    <div class="cal-head">
+      <button class="cal-nav" id="calPrev">›</button>
+      <div class="cal-title">${HE_MONTHS[m]} ${y}</div>
+      <button class="cal-nav" id="calNext">‹</button>
+    </div>
+    <div class="cal-grid cal-wd">${HE_WD.map((w) => `<div class="cal-wdh">${w}</div>`).join("")}</div>
+    <div class="cal-grid" id="calGrid">${cells}</div>
+    <div class="cal-legend"><span><i class="lg-worked"></i> יום עבודה</span><span><i class="lg-sched"></i> עבודה מתוכננת</span></div>
+    <p class="cal-tip">טיפ: הקש על יום כדי לסמן/להסיר יום עבודה.</p>
+
+    <div class="panel">
+      <div class="section-head"><h3>🗓️ עבודות מתוכננות</h3><button class="btn btn--primary btn--sm" id="calAddProject">➕ עבודה</button></div>
+      <div id="calProjects">${projectsListHTML()}</div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head"><h3>📆 ימי עבודה בפרויקט</h3><button class="btn btn--primary btn--sm" id="calAddWorkday">➕ יום עבודה</button></div>
+      ${workdaysPanelHTML()}
+    </div>`;
+
+  $("#calPrev").addEventListener("click", () => { if (--calState.m < 0) { calState.m = 11; calState.y--; } renderCalendar(); });
+  $("#calNext").addEventListener("click", () => { if (++calState.m > 11) { calState.m = 0; calState.y++; } renderCalendar(); });
+  $$("#calGrid .cal-cell[data-iso]").forEach((c) => c.addEventListener("click", () => toggleCalendarDay(c.dataset.iso)));
+  $("#calAddProject").addEventListener("click", () => openProjectForm());
+  $$("#calProjects .proj-row").forEach((r) => r.addEventListener("click", () => openProjectForm(r.dataset.id)));
+  $("#calAddWorkday").addEventListener("click", openWorkdayForm);
+  $$("#calendarBody .wd-del").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("למחוק יום עבודה זה?")) return;
+    try { await deleteWorkday(b.closest(".wd-item").dataset.id); } catch (e) { console.error(e); toast("שגיאה", true); }
+  }));
+}
+
+async function toggleCalendarDay(iso) {
+  const existing = WORKDAYS.filter((w) => w.date === iso);
+  try {
+    if (existing.length) {
+      if (!confirm(`להסיר יום עבודה (${fmtDMY(iso)})?`)) return;
+      for (const w of existing) await deleteWorkday(w.id);
+      toast("יום עבודה הוסר");
+    } else {
+      await addWorkday({ date: iso });
+      toast("✔️ יום עבודה נוסף");
+    }
+  } catch (e) { console.error(e); toast("שגיאה", true); }
+}
+
+// standalone recovery screen (opened from the side menu)
+function openRecoveryScreen() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head"><div class="detail__barcode">🛟 שחזור מזגנים</div><button class="detail__close" data-close>×</button></div>
+    <p class="about__muted" style="margin:0 0 12px">אם הוספת מזגנים במכשיר זה שלא סונכרנו לענן — כאן אפשר לשחזר אותם.</p>
+    <div id="recoverDiag"><p class="tl-empty">לחץ "בדוק מכשיר זה".</p></div>
+    <button class="btn btn--primary" id="recoverCheck" style="margin-top:12px">בדוק מכשיר זה</button>`;
+  modal.hidden = false;
+  $("#recoverCheck").addEventListener("click", runRecoveryDiag);
+}
+
 function renderDashboard() {
   const box = $("#dashStats");
   if (!box) return;
@@ -965,21 +1057,6 @@ function renderDashboard() {
       <div class="stat"><div class="stat__num st-wait">${gc.waiting_part + gc.issue}</div><div class="stat__label">ממתין / תקלה</div></div>
     </div>
 
-    <div class="panel">
-      <div class="section-head"><h3>🗓️ ימי עבודה בפרויקט</h3><button class="btn btn--primary btn--sm" id="addWorkday">➕ יום עבודה</button></div>
-      ${workdaysPanelHTML()}
-    </div>
-
-    <div class="panel">
-      <div class="section-head"><h3>🛟 שחזור מזגנים מקומיים</h3><button class="btn btn--ghost btn--sm" id="recoverCheck">בדוק מכשיר זה</button></div>
-      <div id="recoverDiag"><p class="tl-empty">אם הוספת מזגנים שנעלמו — לחץ "בדוק מכשיר זה" בכל מכשיר שבו עבדת.</p></div>
-    </div>
-
-    <div class="panel">
-      <div class="section-head"><h3>🗓️ עבודות מתוכננות</h3><button class="btn btn--primary btn--sm" id="dashAddProject">➕ עבודה</button></div>
-      <div id="dashProjects">${projectsListHTML()}</div>
-    </div>
-
     ${todayWorkers.length ? `<div class="panel"><h3>👷 עובדים היום</h3><div class="chips-row">${todayWorkers.map((w) => `<span class="chip chip--accent">${esc(w)}</span>`).join("")}</div></div>` : ""}
 
     <div class="panel">
@@ -987,14 +1064,6 @@ function renderDashboard() {
       <div class="site-cards">${buildings.map(siteCardHTML).join("")}</div>
     </div>`;
 
-  $("#recoverCheck").addEventListener("click", runRecoveryDiag);
-  $("#addWorkday").addEventListener("click", openWorkdayForm);
-  $$("#dashStats .wd-del").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm("למחוק יום עבודה זה?")) return;
-    try { await deleteWorkday(b.closest(".wd-item").dataset.id); } catch (e) { console.error(e); toast("שגיאה", true); }
-  }));
-  $("#dashAddProject").addEventListener("click", () => openProjectForm());
-  $$("#dashProjects .proj-row").forEach((r) => r.addEventListener("click", () => openProjectForm(r.dataset.id)));
   $$(".site-card").forEach((c) => c.addEventListener("click", () => openBuilding(c.dataset.building === "ללא" ? "ללא" : c.dataset.building)));
 }
 
