@@ -48,6 +48,8 @@ let WORKDAYS = [];              // live mirror of project workdays
 let VACATIONS = [];             // live mirror of vacation requests
 let VEHICLE_ITEMS = [];         // live mirror of vehicle inventory
 let vehicleSel = "יותם";        // currently viewed vehicle owner
+const viewStack = ["search"];   // visited views, for the Back button
+let suppressPush = false;       // true while restoring via Back (don't re-record)
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -78,6 +80,7 @@ if ("serviceWorker" in navigator) {
 initDb();
 startRealtime();
 wireUI();
+initBackHandler();
 updateGreeting();
 setInterval(updateGreeting, 60000);           // keep it current
 document.addEventListener("visibilitychange", () => { if (!document.hidden) updateGreeting(); });
@@ -355,6 +358,37 @@ function switchView(name) {
   if (name === "list") renderList();
   // leaving the list resets bulk selection
   if (name !== "list" && selectMode) exitSelectMode();
+  // record for the Back button (unless we're restoring via Back)
+  if (!suppressPush && viewStack[viewStack.length - 1] !== name) viewStack.push(name);
+}
+
+// ===================================================================
+//  Hardware / browser Back button — navigate within the app, don't exit
+// ===================================================================
+function closeTopOverlay() {
+  if (!$("#scanOverlay").hidden) { stopScan(); $("#scanOverlay").hidden = true; return true; }
+  const pv = document.querySelector(".photo-viewer"); if (pv) { pv.remove(); return true; }
+  if (!$("#sideMenu").hidden) { closeSideMenu(); return true; }
+  if (!$("#modal").hidden) { closeModal(); return true; }
+  return false;
+}
+
+function initBackHandler() {
+  history.replaceState({ ac: true }, "");
+  history.pushState({ ac: true }, "");   // buffer so Back stays inside the app
+  window.addEventListener("popstate", () => {
+    // 1) if something is open on top, Back just closes it
+    if (closeTopOverlay()) { history.pushState({ ac: true }, ""); return; }
+    // 2) otherwise step back one view
+    if (viewStack.length > 1) {
+      viewStack.pop();
+      suppressPush = true;
+      switchView(viewStack[viewStack.length - 1]);
+      suppressPush = false;
+    }
+    // 3) always keep a buffer so we never fall out of the app
+    history.pushState({ ac: true }, "");
+  });
 }
 
 // ===================================================================
