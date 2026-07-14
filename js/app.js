@@ -17,8 +17,10 @@ const {
   watchProjects, addProject, updateProject, deleteProject,
   watchUpdates, addUpdate, deleteUpdate,
   watchWorkdays, addWorkday, deleteWorkday,
+  watchVacations, addVacation, updateVacation, deleteVacation,
   bulkAddService, bulkAppendNote,
 } = store;
+const isGuy = () => (localStorage.getItem("ac_username") || "").trim() === "גיא";
 
 // ---- Work-status definitions ---------------------------------------
 const STATUS = {
@@ -42,6 +44,7 @@ let PARTS = [];                 // live mirror of missing parts
 let PROJECTS = [];              // live mirror of scheduled projects
 let UPDATES = [];               // live mirror of team updates
 let WORKDAYS = [];              // live mirror of project workdays
+let VACATIONS = [];             // live mirror of vacation requests
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -223,6 +226,14 @@ function startRealtime() {
     (list) => { WORKDAYS = list; if ($("#view-calendar").classList.contains("is-active")) renderCalendar(); },
     (err) => console.error(err)
   );
+  watchVacations(
+    (list) => {
+      VACATIONS = list; renderVacationWeek();
+      if ($("#view-vacations").classList.contains("is-active")) renderVacations();
+      if ($("#view-calendar").classList.contains("is-active")) renderCalendar();
+    },
+    (err) => console.error(err)
+  );
   if (isConfigured) {
     window.addEventListener("online",  () => setSync("מחובר ✓", "is-online"));
     window.addEventListener("offline", () => setSync("לא מקוון — נשמר מקומית", "is-offline"));
@@ -292,6 +303,7 @@ function wireUI() {
   // side menu
   $("#menuBtn").addEventListener("click", () => { $("#sideMenu").hidden = false; });
   $("#sideMenu").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeSideMenu(); });
+  $("#menuVacations").addEventListener("click", () => { closeSideMenu(); switchView("vacations"); });
   $("#menuComplaints").addEventListener("click", () => { closeSideMenu(); switchView("complaints"); });
   $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
   $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
@@ -300,6 +312,9 @@ function wireUI() {
 
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
+
+  // vacations
+  $("#btnNewVacation").addEventListener("click", () => openVacationForm());
 
   // complaints
   $("#btnNewComplaint").addEventListener("click", () => openComplaintForm());
@@ -321,6 +336,7 @@ function switchView(name) {
   stopScan();
   if (name === "buildings") renderBuildings();
   if (name === "complaints") renderComplaints();
+  if (name === "vacations") renderVacations();
   if (name === "calendar") renderCalendar();
   if (name === "dash") renderDashboard();
   if (name === "list") renderList();
@@ -959,7 +975,7 @@ async function onAddSubmit(e) {
 // ===================================================================
 const HE_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 const HE_WD = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
-const pad2 = (n) => String(n).padStart(2, "0");
+function pad2(n) { return String(n).padStart(2, "0"); }
 let calState = null;
 
 function renderCalendar() {
@@ -970,12 +986,14 @@ function renderCalendar() {
   const days = new Date(y, m + 1, 0).getDate();
   const worked = new Set(WORKDAYS.map((w) => w.date));
   const sched = new Set(PROJECTS.map((p) => p.date).filter(Boolean));
+  const vacs = VACATIONS.filter((v) => v.status === "approved");
+  const onVacation = (iso) => vacs.some((v) => iso >= v.from && iso <= v.to);
   const today = todayISO();
   let cells = "";
   for (let i = 0; i < firstDow; i++) cells += `<div class="cal-cell cal-cell--empty"></div>`;
   for (let d = 1; d <= days; d++) {
     const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
-    cells += `<button class="cal-cell ${worked.has(iso) ? "is-worked" : ""} ${iso === today ? "is-today" : ""}" data-iso="${iso}">
+    cells += `<button class="cal-cell ${worked.has(iso) ? "is-worked" : ""} ${onVacation(iso) ? "has-vac" : ""} ${iso === today ? "is-today" : ""}" data-iso="${iso}">
       <span class="cal-num">${d}</span>${sched.has(iso) ? `<span class="cal-dot"></span>` : ""}
     </button>`;
   }
@@ -987,7 +1005,7 @@ function renderCalendar() {
     </div>
     <div class="cal-grid cal-wd">${HE_WD.map((w) => `<div class="cal-wdh">${w}</div>`).join("")}</div>
     <div class="cal-grid" id="calGrid">${cells}</div>
-    <div class="cal-legend"><span><i class="lg-worked"></i> יום עבודה</span><span><i class="lg-sched"></i> עבודה מתוכננת</span></div>
+    <div class="cal-legend"><span><i class="lg-worked"></i> יום עבודה</span><span><i class="lg-sched"></i> עבודה מתוכננת</span><span><i class="lg-vac"></i> חופשה</span></div>
     <p class="cal-tip">טיפ: הקש על יום כדי לסמן/להסיר יום עבודה.</p>
 
     <div class="panel">
@@ -1038,6 +1056,117 @@ function openRecoveryScreen() {
     <button class="btn btn--primary" id="recoverCheck" style="margin-top:12px">בדוק מכשיר זה</button>`;
   modal.hidden = false;
   $("#recoverCheck").addEventListener("click", runRecoveryDiag);
+}
+
+// ===================================================================
+//  Vacations (request + approval by גיא)
+// ===================================================================
+const VAC_STATUS = {
+  pending:  { label: "⏳ ממתין לאישור גיא", cls: "chip--warn" },
+  approved: { label: "✓ מאושר", cls: "chip--done" },
+  rejected: { label: "✕ נדחה", cls: "chip--warn" },
+};
+
+function renderVacations() {
+  const box = $("#vacationsList"); if (!box) return;
+  if (!VACATIONS.length) {
+    box.innerHTML = emptyHTML("🏖️", "אין בקשות חופשה", "הגש בקשה עם הכפתור ➕ בקשה");
+    return;
+  }
+  box.innerHTML = VACATIONS.map(vacItemHTML).join("");
+  wireVacations(box);
+}
+
+function vacItemHTML(v) {
+  const s = VAC_STATUS[v.status] || VAC_STATUS.pending;
+  const canApprove = v.status === "pending" && isGuy();
+  return `
+    <div class="card vac ${v.status === "rejected" ? "is-done" : ""}" data-id="${esc(v.id)}">
+      <div class="card__body">
+        <div class="card__head">
+          <span class="vac__name">🏖️ ${esc(v.name || "עובד")}</span>
+          <span class="chip ${s.cls}">${s.label}</span>
+        </div>
+        <div class="vac__dates">📅 ${fmtDMY(v.from)}${v.to && v.to !== v.from ? ` – ${fmtDMY(v.to)}` : ""}</div>
+        ${v.note ? `<div class="vac__note">${esc(v.note)}</div>` : ""}
+        ${v.decidedBy ? `<div class="vac__by">טופל ע"י ${esc(v.decidedBy)}</div>` : ""}
+        <div class="vac__actions">
+          ${canApprove ? `<button class="btn btn--primary btn--sm vac-approve">✓ אשר</button><button class="btn btn--danger btn--sm vac-reject">✕ דחה</button>` : ""}
+          <button class="btn btn--ghost btn--sm vac-del">🗑️ מחק</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function wireVacations(box) {
+  $$(".vac", box).forEach((el) => {
+    const id = el.dataset.id;
+    el.querySelector(".vac-approve")?.addEventListener("click", async () => {
+      try { await updateVacation(id, { status: "approved", decidedBy: "גיא" }); toast("✓ החופשה אושרה"); }
+      catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+    el.querySelector(".vac-reject")?.addEventListener("click", async () => {
+      try { await updateVacation(id, { status: "rejected", decidedBy: "גיא" }); toast("הבקשה נדחתה"); }
+      catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+    el.querySelector(".vac-del")?.addEventListener("click", async () => {
+      if (!confirm("למחוק את הבקשה?")) return;
+      try { await deleteVacation(id); toast("נמחק"); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+  });
+}
+
+function openVacationForm() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  const name = localStorage.getItem("ac_username") || "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head"><div class="detail__barcode">🏖️ בקשת חופשה</div><button class="detail__close" data-close>×</button></div>
+    <form class="form" id="vacForm">
+      <label>שם העובד<input name="name" value="${esc(name)}" required placeholder="שם"></label>
+      <div class="row2">
+        <label>מתאריך<input type="date" name="from" value="${todayISO()}" required></label>
+        <label>עד תאריך<input type="date" name="to" value="${todayISO()}" required></label>
+      </div>
+      <label>סיבה / הערה<textarea name="note" rows="2" placeholder="אופציונלי"></textarea></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">📨 שלח לאישור</button>
+        <button type="button" class="btn btn--ghost" data-close>ביטול</button>
+      </div>
+    </form>
+    <p class="about__muted" style="margin-top:10px">הבקשה תישלח לאישור גיא. לאחר אישור היא תופיע ביומן ובדף הבית.</p>`;
+  modal.hidden = false;
+  $("#vacForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (!f.name.value.trim()) return;
+    let from = f.from.value, to = f.to.value;
+    if (to && from && to < from) [from, to] = [to, from];
+    localStorage.setItem("ac_username", f.name.value.trim());
+    try { await addVacation({ name: f.name.value, from, to, note: f.note.value }); toast("📨 הבקשה נשלחה לאישור גיא"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה בשליחה", true); }
+  });
+}
+
+// Home: "this week vacation" bullet — approved vacations overlapping this week
+function thisWeekRange() {
+  const d = new Date();
+  const start = new Date(d); start.setDate(d.getDate() - d.getDay());   // Sunday
+  const end = new Date(start); end.setDate(start.getDate() + 6);        // Saturday
+  const iso = (x) => `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`;
+  return { start: iso(start), end: iso(end) };
+}
+function renderVacationWeek() {
+  const el = $("#vacWeek"); if (!el) return;
+  const { start, end } = thisWeekRange();
+  const list = VACATIONS.filter((v) => v.status === "approved" && v.from <= end && v.to >= start);
+  el.innerHTML = list.length
+    ? `<div class="vac-week">
+        <div class="vac-week__title">🏖️ חופשות השבוע</div>
+        <ul>${list.map((v) => `<li>${esc(v.name)} — ${fmtDMY(v.from)}${v.to !== v.from ? `–${fmtDMY(v.to)}` : ""}</li>`).join("")}</ul>
+      </div>`
+    : "";
 }
 
 function renderDashboard() {

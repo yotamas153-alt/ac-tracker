@@ -39,6 +39,7 @@
     <!-- View: Search -->
     <section id="view-search" class="view is-active">
       <div id="upcomingCard" class="upcoming"></div>
+      <div id="vacWeek"></div>
       <div class="search-bar">
         <div class="search-field">
           <span class="search-field__icon">🔍</span>
@@ -142,6 +143,15 @@
       </form>
     </section>
 
+    <!-- View: Vacations -->
+    <section id="view-vacations" class="view">
+      <div class="section-head">
+        <h2>🏖️ חופשות</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewVacation">➕ בקשה</button>
+      </div>
+      <div id="vacationsList" class="results"></div>
+    </section>
+
     <!-- View: Calendar / schedule / workdays -->
     <section id="view-calendar" class="view">
       <div id="calendarBody"></div>
@@ -184,6 +194,7 @@
         <span>☰ תפריט</span>
         <button class="side__close" data-close aria-label="סגור">×</button>
       </div>
+      <button class="side__item" id="menuVacations">🏖️ <span>חופשות</span></button>
       <button class="side__item" id="menuComplaints">📣 <span>תקלות ופניות</span></button>
       <button class="side__item" id="menuParts">🧰 <span>חוסרים — כל המבנים</span></button>
       <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>

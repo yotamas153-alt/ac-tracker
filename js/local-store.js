@@ -14,6 +14,7 @@ const PART_KEY    = "ac_parts";
 const PROJ_KEY    = "ac_projects";
 const UPD_KEY     = "ac_updates";
 const WD_KEY      = "ac_workdays";
+const VAC_KEY     = "ac_vacations";
 
 let units = {};        // { barcode: {..fields..} }
 let services = {};      // { barcode: [ {..entry..} ] }
@@ -24,6 +25,7 @@ let parts = {};         // { id: {building,item,note,done,createdAt} }
 let projects = {};      // { id: {building,date,time,location,workers,createdAt} }
 let updates = {};       // { id: {text,author,createdAt} }
 let workdays = {};      // { id: {date,note,createdAt} }
+let vacations = {};     // { id: {name,from,to,note,status,decidedBy,createdAt} }
 
 const unitListeners = new Set();               // Set<fn>
 const svcListeners  = new Map();               // barcode -> Set<fn>
@@ -34,6 +36,7 @@ const partListeners = new Set();               // Set<fn>
 const projListeners = new Set();               // Set<fn>
 const updListeners  = new Set();               // Set<fn>
 const wdListeners   = new Set();               // Set<fn>
+const vacListeners  = new Set();               // Set<fn>
 
 // ---- persistence --------------------------------------------------
 function load() {
@@ -46,6 +49,7 @@ function load() {
   try { projects   = JSON.parse(localStorage.getItem(PROJ_KEY)  || "{}"); } catch { projects = {}; }
   try { updates    = JSON.parse(localStorage.getItem(UPD_KEY)   || "{}"); } catch { updates = {}; }
   try { workdays   = JSON.parse(localStorage.getItem(WD_KEY)    || "{}"); } catch { workdays = {}; }
+  try { vacations  = JSON.parse(localStorage.getItem(VAC_KEY)   || "{}"); } catch { vacations = {}; }
 }
 function saveUnits()      { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function saveServices()   { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
@@ -56,6 +60,7 @@ function saveParts()      { localStorage.setItem(PART_KEY, JSON.stringify(parts)
 function saveProjects()   { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); }
 function saveUpdates()    { localStorage.setItem(UPD_KEY, JSON.stringify(updates)); }
 function saveWorkdays()   { localStorage.setItem(WD_KEY, JSON.stringify(workdays)); }
+function saveVacations()  { localStorage.setItem(VAC_KEY, JSON.stringify(vacations)); }
 
 const now = () => Date.now();
 const newId = () => `s_${now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -431,6 +436,38 @@ export async function deleteWorkday(id) {
   delete workdays[id];
   saveWorkdays();
   notifyWorkdays();
+}
+
+// ---- Vacation requests --------------------------------------------
+function vacationsArray() {
+  return Object.values(vacations).sort((a, b) => String(b.from).localeCompare(String(a.from)));
+}
+function notifyVacations() { const arr = vacationsArray(); vacListeners.forEach((fn) => fn(arr)); }
+export function watchVacations(onData) {
+  vacListeners.add(onData);
+  onData(vacationsArray());
+  return () => vacListeners.delete(onData);
+}
+export async function addVacation(data) {
+  const id = newId();
+  vacations[id] = {
+    id, name: data.name?.trim() || "", from: data.from || "", to: data.to || data.from || "",
+    note: data.note?.trim() || "", status: "pending", decidedBy: "", createdAt: now(),
+  };
+  saveVacations();
+  notifyVacations();
+  return id;
+}
+export async function updateVacation(id, fields) {
+  if (!vacations[id]) return;
+  Object.assign(vacations[id], fields);
+  saveVacations();
+  notifyVacations();
+}
+export async function deleteVacation(id) {
+  delete vacations[id];
+  saveVacations();
+  notifyVacations();
 }
 
 // ---- Bulk actions -------------------------------------------------

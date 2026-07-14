@@ -323,6 +323,28 @@ export async function deleteWorkday(id) {
   await deleteDoc(doc(db, "workdays", id));
 }
 
+// ---- Vacation requests --------------------------------------------
+const vacationsCol = () => collection(db, "vacations");
+export function watchVacations(onData, onError) {
+  const q = query(vacationsCol(), orderBy("from", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addVacation(data) {
+  const ref = await addDoc(vacationsCol(), {
+    name: data.name?.trim() || "", from: data.from || "", to: data.to || data.from || "",
+    note: data.note?.trim() || "", status: "pending", decidedBy: "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateVacation(id, fields) {
+  await updateDoc(doc(db, "vacations", id), fields);
+}
+export async function deleteVacation(id) {
+  await deleteDoc(doc(db, "vacations", id));
+}
+
 // ---- Bulk actions -------------------------------------------------
 export async function bulkAddService(barcodes, svc) {
   for (const bc of barcodes) await addService(bc, svc);

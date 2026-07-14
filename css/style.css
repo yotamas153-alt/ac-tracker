@@ -621,6 +621,30 @@ textarea { resize: vertical; }
 .lg-sched { background: var(--warn); border-radius: 50%; }
 .cal-tip { text-align: center; font-size: 12px; color: var(--faint); margin: 0 0 16px; }
 
+/* vacations */
+.cal-cell.has-vac::before {
+  content: ""; position: absolute; top: 5px; inset-inline-end: 5px;
+  width: 7px; height: 7px; border-radius: 50%; background: #34d399;
+}
+.cal-cell.is-worked.has-vac::before { background: #065f46; }
+.lg-vac { background: #34d399; border-radius: 50%; }
+.vac__name { font-size: 16px; font-weight: 700; }
+.vac__dates { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.vac__note { font-size: 14px; margin-top: 4px; }
+.vac__by { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.vac__actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.vac__actions .btn { flex: 1; min-width: 90px; }
+.vac.is-done { opacity: .6; }
+.vac-week {
+  margin-bottom: 14px; padding: 12px 16px; border-radius: var(--r);
+  background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.35);
+}
+.vac-week:empty { display: none; }
+.vac-week__title { font-size: 14px; font-weight: 700; color: var(--good); margin-bottom: 6px; }
+.vac-week ul { margin: 0; padding-inline-start: 20px; }
+.vac-week li { font-size: 14px; margin: 3px 0; }
+#vacWeek:empty { display: none; }
+
 /* workdays log */
 .wd-summary { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
 .wd-count {
