@@ -143,6 +143,17 @@
       </form>
     </section>
 
+    <!-- View: Vehicle inventory -->
+    <section id="view-vehicles" class="view">
+      <div class="section-head"><h2>🚚 מלאי רכבים</h2></div>
+      <div class="veh-tabs" id="vehTabs">
+        <button class="seg is-active" data-owner="יותם">יותם</button>
+        <button class="seg" data-owner="אלון">אלון</button>
+        <button class="seg" data-owner="גיא">גיא</button>
+      </div>
+      <div id="vehicleBody"></div>
+    </section>
+
     <!-- View: Vacations -->
     <section id="view-vacations" class="view">
       <div class="section-head">
@@ -194,9 +205,11 @@
         <span>☰ תפריט</span>
         <button class="side__close" data-close aria-label="סגור">×</button>
       </div>
+      <button class="side__item" id="menuVehicles">🚚 <span>מלאי רכבים</span></button>
       <button class="side__item" id="menuVacations">🏖️ <span>חופשות</span></button>
       <button class="side__item" id="menuComplaints">📣 <span>תקלות ופניות</span></button>
       <button class="side__item" id="menuParts">🧰 <span>חוסרים — כל המבנים</span></button>
+      <button class="side__item" id="menuExport">📊 <span>ייצוא לאקסל</span></button>
       <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
       <button class="side__item" id="menuRecover">🛟 <span>שחזור מזגנים מקומיים</span></button>
       <button class="side__item" id="menuAbout">ℹ️ <span>אודות</span></button>
@@ -219,6 +232,8 @@
 
   <!-- Barcode scanning library (global) -->
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- Excel export (SheetJS) -->
+  <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- App (ES modules) -->
   <script type="module" src="js/app.js"></script>
 </body>

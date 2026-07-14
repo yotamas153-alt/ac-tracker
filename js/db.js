@@ -345,6 +345,28 @@ export async function deleteVacation(id) {
   await deleteDoc(doc(db, "vacations", id));
 }
 
+// ---- Vehicle inventory (per worker) -------------------------------
+const vehCol = () => collection(db, "vehicle_items");
+export function watchVehicleItems(onData, onError) {
+  const q = query(vehCol(), orderBy("createdAt", "asc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addVehicleItem(data) {
+  const ref = await addDoc(vehCol(), {
+    owner: data.owner?.trim() || "", item: data.item?.trim() || "",
+    missing: !!data.missing, createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateVehicleItem(id, fields) {
+  await updateDoc(doc(db, "vehicle_items", id), fields);
+}
+export async function deleteVehicleItem(id) {
+  await deleteDoc(doc(db, "vehicle_items", id));
+}
+
 // ---- Bulk actions -------------------------------------------------
 export async function bulkAddService(barcodes, svc) {
   for (const bc of barcodes) await addService(bc, svc);

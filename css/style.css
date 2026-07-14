@@ -621,6 +621,21 @@ textarea { resize: vertical; }
 .lg-sched { background: var(--warn); border-radius: 50%; }
 .cal-tip { text-align: center; font-size: 12px; color: var(--faint); margin: 0 0 16px; }
 
+/* vehicle inventory */
+.veh-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.veh-summary { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 15px; font-weight: 600; }
+.veh-missing { color: var(--danger); }
+.veh-list { display: grid; gap: 8px; margin-top: 14px; }
+.veh-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--glass); border: 1px solid var(--stroke); border-radius: 12px; }
+.veh-item.is-missing { border-color: rgba(251,90,106,.5); background: rgba(251,90,106,.08); }
+.veh-name { flex: 1; font-size: 15px; font-weight: 500; }
+.veh-toggle {
+  flex: 0 0 auto; background: var(--glass-2); border: 1px solid var(--stroke); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.veh-item.is-missing .veh-toggle { color: var(--danger); border-color: rgba(251,90,106,.5); }
+.veh-del { background: none; border: none; color: var(--faint); cursor: pointer; font-size: 15px; }
+
 /* vacations */
 .cal-cell.has-vac::before {
   content: ""; position: absolute; top: 5px; inset-inline-end: 5px;

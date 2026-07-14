@@ -18,6 +18,7 @@ const {
   watchUpdates, addUpdate, deleteUpdate,
   watchWorkdays, addWorkday, deleteWorkday,
   watchVacations, addVacation, updateVacation, deleteVacation,
+  watchVehicleItems, addVehicleItem, updateVehicleItem, deleteVehicleItem,
   bulkAddService, bulkAppendNote,
 } = store;
 const isGuy = () => (localStorage.getItem("ac_username") || "").trim() === "גיא";
@@ -45,6 +46,8 @@ let PROJECTS = [];              // live mirror of scheduled projects
 let UPDATES = [];               // live mirror of team updates
 let WORKDAYS = [];              // live mirror of project workdays
 let VACATIONS = [];             // live mirror of vacation requests
+let VEHICLE_ITEMS = [];         // live mirror of vehicle inventory
+let vehicleSel = "יותם";        // currently viewed vehicle owner
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -234,6 +237,10 @@ function startRealtime() {
     },
     (err) => console.error(err)
   );
+  watchVehicleItems(
+    (list) => { VEHICLE_ITEMS = list; if ($("#view-vehicles").classList.contains("is-active")) renderVehicles(); },
+    (err) => console.error(err)
+  );
   if (isConfigured) {
     window.addEventListener("online",  () => setSync("מחובר ✓", "is-online"));
     window.addEventListener("offline", () => setSync("לא מקוון — נשמר מקומית", "is-offline"));
@@ -303,6 +310,8 @@ function wireUI() {
   // side menu
   $("#menuBtn").addEventListener("click", () => { $("#sideMenu").hidden = false; });
   $("#sideMenu").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeSideMenu(); });
+  $("#menuVehicles").addEventListener("click", () => { closeSideMenu(); switchView("vehicles"); });
+  $("#menuExport").addEventListener("click", () => { closeSideMenu(); exportExcel(); });
   $("#menuVacations").addEventListener("click", () => { closeSideMenu(); switchView("vacations"); });
   $("#menuComplaints").addEventListener("click", () => { closeSideMenu(); switchView("complaints"); });
   $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
@@ -312,6 +321,9 @@ function wireUI() {
 
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
+
+  // vehicle inventory tabs
+  $$("#vehTabs .seg").forEach((s) => s.addEventListener("click", () => { vehicleSel = s.dataset.owner; renderVehicles(); }));
 
   // vacations
   $("#btnNewVacation").addEventListener("click", () => openVacationForm());
@@ -337,6 +349,7 @@ function switchView(name) {
   if (name === "buildings") renderBuildings();
   if (name === "complaints") renderComplaints();
   if (name === "vacations") renderVacations();
+  if (name === "vehicles") renderVehicles();
   if (name === "calendar") renderCalendar();
   if (name === "dash") renderDashboard();
   if (name === "list") renderList();
@@ -1056,6 +1069,101 @@ function openRecoveryScreen() {
     <button class="btn btn--primary" id="recoverCheck" style="margin-top:12px">בדוק מכשיר זה</button>`;
   modal.hidden = false;
   $("#recoverCheck").addEventListener("click", runRecoveryDiag);
+}
+
+// ===================================================================
+//  Vehicle inventory (per worker: יותם / אלון / גיא)
+// ===================================================================
+const VEH_QUICK = ["גז R410A", "גז R32", "קבלים", "פילטרים", "סרט בידוד", "צינור נחושת", "ברגים", "כבל חשמל", "נצרות", "אזיקונים", "סיליקון", "אחר"];
+
+function renderVehicles() {
+  const box = $("#vehicleBody"); if (!box) return;
+  $$("#vehTabs .seg").forEach((s) => s.classList.toggle("is-active", s.dataset.owner === vehicleSel));
+  const items = VEHICLE_ITEMS.filter((i) => i.owner === vehicleSel);
+  const missing = items.filter((i) => i.missing).length;
+  box.innerHTML = `
+    <div class="veh-summary">
+      <span>${items.length} פריטים</span>
+      <span class="veh-missing">${missing} חסרים</span>
+    </div>
+    <div class="parts-quick">
+      ${VEH_QUICK.map((it) => `<button class="chip part-quick" data-item="${esc(it)}">➕ ${esc(it)}</button>`).join("")}
+    </div>
+    <form class="svc-form" id="vehForm" style="border-top:none;margin-top:8px;padding-top:0">
+      <div class="row"><input name="item" placeholder="פריט נוסף" required></div>
+      <button class="btn btn--primary" type="submit">➕ הוסף פריט</button>
+    </form>
+    <div class="veh-list">
+      ${items.length ? items.map(vehRow).join("") : `<p class="tl-empty">אין פריטים לרכב של ${esc(vehicleSel)}. הוסף מהרשימה למעלה.</p>`}
+    </div>`;
+
+  $$(".part-quick", box).forEach((b) => b.addEventListener("click", async () => {
+    try { await addVehicleItem({ owner: vehicleSel, item: b.dataset.item }); toast("➕ נוסף"); }
+    catch (e) { console.error(e); toast("שגיאה", true); }
+  }));
+  $("#vehForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = e.target.item.value.trim(); if (!v) return;
+    try { await addVehicleItem({ owner: vehicleSel, item: v }); e.target.reset(); }
+    catch (err) { console.error(err); toast("שגיאה", true); }
+  });
+  $$(".veh-item", box).forEach((el) => {
+    const id = el.dataset.id;
+    const it = VEHICLE_ITEMS.find((x) => x.id === id);
+    el.querySelector(".veh-toggle").addEventListener("click", async () => {
+      try { await updateVehicleItem(id, { missing: !it.missing }); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+    el.querySelector(".veh-del").addEventListener("click", async () => {
+      try { await deleteVehicleItem(id); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+  });
+}
+
+function vehRow(i) {
+  return `
+    <div class="veh-item ${i.missing ? "is-missing" : ""}" data-id="${esc(i.id)}">
+      <button class="veh-toggle">${i.missing ? "⭕ חסר" : "✅ יש"}</button>
+      <span class="veh-name">${esc(i.item)}</span>
+      <button class="veh-del" title="מחק">🗑️</button>
+    </div>`;
+}
+
+// ===================================================================
+//  Excel export (SheetJS) — download or share (email/WhatsApp) on mobile
+// ===================================================================
+async function exportExcel() {
+  if (typeof XLSX === "undefined") { toast("הייצוא אינו זמין (נדרש חיבור לאינטרנט)", true); return; }
+  const stLabel = (k) => (STATUS[k] || STATUS.not_started).label;
+  const wb = XLSX.utils.book_new();
+  const add = (name, rows) => { if (rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name); };
+
+  add("מזגנים", UNITS.map((u) => ({
+    "ברקוד": u.barcode, "מבנה": u.building || "", "קומה/אזור": u.area || "", "סוג": u.type || "",
+    "מיקום": u.location || "", "סטטוס": stLabel(u.status), "הערות": u.notes || "",
+    "מק\"ט ישן": u.oldSku || "", "טיפול אחרון": u.lastService || "",
+  })));
+  add("מלאי רכבים", VEHICLE_ITEMS.map((i) => ({ "עובד": i.owner, "פריט": i.item, "סטטוס": i.missing ? "חסר" : "יש" })));
+  add("חוסרים במבנים", PARTS.map((p) => ({ "מבנה": p.building || "", "פריט": p.item, "הערה": p.note || "", "סטטוס": p.done ? "סופק" : "חסר" })));
+  add("תקלות", COMPLAINTS.map((c) => ({ "לקוח": c.customer || "", "טלפון": c.phone || "", "מבנה": c.building || "", "ברקוד": c.barcode || "", "תיאור": c.description || "", "סטטוס": c.status === "done" ? "טופל" : "פתוח" })));
+  add("חופשות", VACATIONS.map((v) => ({ "עובד": v.name, "מתאריך": v.from, "עד": v.to, "סטטוס": v.status, "הערה": v.note || "" })));
+
+  if (!wb.SheetNames.length) { toast("אין נתונים לייצוא", true); return; }
+
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const fname = `ac-tracker-${todayISO()}.xlsx`;
+  const file = new File([blob], fname, { type: blob.type });
+
+  // On mobile, offer the native share sheet (email / WhatsApp) with the file attached.
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "דוח AC Tracker" }); return; }
+    catch (err) { if (err && err.name === "AbortError") return; /* else fall through to download */ }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast("📊 הקובץ יוצא");
 }
 
 // ===================================================================
