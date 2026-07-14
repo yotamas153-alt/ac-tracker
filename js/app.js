@@ -16,6 +16,7 @@ const {
   watchParts, addPart, updatePart, deletePart,
   watchProjects, addProject, updateProject, deleteProject,
   watchUpdates, addUpdate, deleteUpdate,
+  watchWorkdays, addWorkday, deleteWorkday,
   bulkAddService, bulkAppendNote,
 } = store;
 
@@ -40,6 +41,7 @@ let BUILDINGS = {};             // { name: {name, cover} } from buildings collec
 let PARTS = [];                 // live mirror of missing parts
 let PROJECTS = [];              // live mirror of scheduled projects
 let UPDATES = [];               // live mirror of team updates
+let WORKDAYS = [];              // live mirror of project workdays
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
@@ -211,6 +213,10 @@ function startRealtime() {
   );
   watchUpdates(
     (list) => { UPDATES = list; renderUpdates(); },
+    (err) => console.error(err)
+  );
+  watchWorkdays(
+    (list) => { WORKDAYS = list; if ($("#view-dash").classList.contains("is-active")) renderDashboard(); },
     (err) => console.error(err)
   );
   if (isConfigured) {
@@ -951,6 +957,11 @@ function renderDashboard() {
     </div>
 
     <div class="panel">
+      <div class="section-head"><h3>🗓️ ימי עבודה בפרויקט</h3><button class="btn btn--primary btn--sm" id="addWorkday">➕ יום עבודה</button></div>
+      ${workdaysPanelHTML()}
+    </div>
+
+    <div class="panel">
       <div class="section-head"><h3>🛟 שחזור מזגנים מקומיים</h3><button class="btn btn--ghost btn--sm" id="recoverCheck">בדוק מכשיר זה</button></div>
       <div id="recoverDiag"><p class="tl-empty">אם הוספת מזגנים שנעלמו — לחץ "בדוק מכשיר זה" בכל מכשיר שבו עבדת.</p></div>
     </div>
@@ -968,6 +979,11 @@ function renderDashboard() {
     </div>`;
 
   $("#recoverCheck").addEventListener("click", runRecoveryDiag);
+  $("#addWorkday").addEventListener("click", openWorkdayForm);
+  $$("#dashStats .wd-del").forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("למחוק יום עבודה זה?")) return;
+    try { await deleteWorkday(b.closest(".wd-item").dataset.id); } catch (e) { console.error(e); toast("שגיאה", true); }
+  }));
   $("#dashAddProject").addEventListener("click", () => openProjectForm());
   $$("#dashProjects .proj-row").forEach((r) => r.addEventListener("click", () => openProjectForm(r.dataset.id)));
   $$(".site-card").forEach((c) => c.addEventListener("click", () => openBuilding(c.dataset.building === "ללא" ? "ללא" : c.dataset.building)));
@@ -1008,6 +1024,58 @@ function siteCardHTML(name) {
       </div>
       ${areaRows ? `<div class="area-block">${areaRows}</div>` : ""}
     </div>`;
+}
+
+function fmtDMY(iso) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function workdaysPanelHTML() {
+  const dates = [...new Set(WORKDAYS.map((w) => w.date).filter(Boolean))].sort();
+  const count = dates.length;
+  const span = count ? `${fmtDMY(dates[0])} – ${fmtDMY(dates[count - 1])}` : "";
+  const list = WORKDAYS.length
+    ? WORKDAYS.map((w) => `
+        <div class="wd-item" data-id="${esc(w.id)}">
+          <span class="wd-date">📅 ${fmtDMY(w.date)}</span>
+          ${w.note ? `<span class="wd-note">${esc(w.note)}</span>` : ""}
+          <button class="wd-del" title="מחק">✕</button>
+        </div>`).join("")
+    : `<p class="tl-empty">עדיין לא נרשמו ימי עבודה.</p>`;
+  return `
+    <div class="wd-summary">
+      <div class="wd-count">${count}</div>
+      <div class="wd-label">ימי עבודה${span ? `<br><span class="wd-span">${span}</span>` : ""}</div>
+    </div>
+    <div class="wd-list">${list}</div>`;
+}
+
+function openWorkdayForm() {
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">🗓️ יום עבודה</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="wdForm">
+      <label>תאריך<input type="date" name="date" value="${todayISO()}" required></label>
+      <label>הערה (אופציונלי)<input name="note" placeholder="מי עבד / מה נעשה"></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💾 שמור</button>
+        <button type="button" class="btn btn--ghost" data-close>ביטול</button>
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#wdForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try { await addWorkday({ date: f.date.value, note: f.note.value }); toast("💾 יום עבודה נשמר"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
+  });
 }
 
 function projectsListHTML() {

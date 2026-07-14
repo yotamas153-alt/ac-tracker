@@ -13,6 +13,7 @@ const BLD_KEY     = "ac_buildings";
 const PART_KEY    = "ac_parts";
 const PROJ_KEY    = "ac_projects";
 const UPD_KEY     = "ac_updates";
+const WD_KEY      = "ac_workdays";
 
 let units = {};        // { barcode: {..fields..} }
 let services = {};      // { barcode: [ {..entry..} ] }
@@ -22,6 +23,7 @@ let buildings = {};     // { name: {name, cover, updatedAt} }
 let parts = {};         // { id: {building,item,note,done,createdAt} }
 let projects = {};      // { id: {building,date,time,location,workers,createdAt} }
 let updates = {};       // { id: {text,author,createdAt} }
+let workdays = {};      // { id: {date,note,createdAt} }
 
 const unitListeners = new Set();               // Set<fn>
 const svcListeners  = new Map();               // barcode -> Set<fn>
@@ -31,6 +33,7 @@ const bldListeners  = new Set();               // Set<fn>
 const partListeners = new Set();               // Set<fn>
 const projListeners = new Set();               // Set<fn>
 const updListeners  = new Set();               // Set<fn>
+const wdListeners   = new Set();               // Set<fn>
 
 // ---- persistence --------------------------------------------------
 function load() {
@@ -42,6 +45,7 @@ function load() {
   try { parts      = JSON.parse(localStorage.getItem(PART_KEY)  || "{}"); } catch { parts = {}; }
   try { projects   = JSON.parse(localStorage.getItem(PROJ_KEY)  || "{}"); } catch { projects = {}; }
   try { updates    = JSON.parse(localStorage.getItem(UPD_KEY)   || "{}"); } catch { updates = {}; }
+  try { workdays   = JSON.parse(localStorage.getItem(WD_KEY)    || "{}"); } catch { workdays = {}; }
 }
 function saveUnits()      { localStorage.setItem(UNITS_KEY, JSON.stringify(units)); }
 function saveServices()   { localStorage.setItem(SVC_KEY,   JSON.stringify(services)); }
@@ -51,6 +55,7 @@ function saveBuildings()  { try { localStorage.setItem(BLD_KEY, JSON.stringify(b
 function saveParts()      { localStorage.setItem(PART_KEY, JSON.stringify(parts)); }
 function saveProjects()   { localStorage.setItem(PROJ_KEY, JSON.stringify(projects)); }
 function saveUpdates()    { localStorage.setItem(UPD_KEY, JSON.stringify(updates)); }
+function saveWorkdays()   { localStorage.setItem(WD_KEY, JSON.stringify(workdays)); }
 
 const now = () => Date.now();
 const newId = () => `s_${now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -400,6 +405,32 @@ export async function deleteUpdate(id) {
   delete updates[id];
   saveUpdates();
   notifyUpdates();
+}
+
+// ---- Workdays (project day log) -----------------------------------
+function workdaysArray() {
+  return Object.values(workdays).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+function notifyWorkdays() { const arr = workdaysArray(); wdListeners.forEach((fn) => fn(arr)); }
+export function watchWorkdays(onData) {
+  wdListeners.add(onData);
+  onData(workdaysArray());
+  return () => wdListeners.delete(onData);
+}
+export async function addWorkday(data) {
+  const id = newId();
+  workdays[id] = {
+    id, date: data.date || new Date().toISOString().slice(0, 10),
+    note: data.note?.trim() || "", createdAt: now(),
+  };
+  saveWorkdays();
+  notifyWorkdays();
+  return id;
+}
+export async function deleteWorkday(id) {
+  delete workdays[id];
+  saveWorkdays();
+  notifyWorkdays();
 }
 
 // ---- Bulk actions -------------------------------------------------

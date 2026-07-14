@@ -304,6 +304,25 @@ export async function deleteUpdate(id) {
   await deleteDoc(doc(db, "updates", id));
 }
 
+// ---- Workdays (project day log) -----------------------------------
+const workdaysCol = () => collection(db, "workdays");
+export function watchWorkdays(onData, onError) {
+  const q = query(workdaysCol(), orderBy("date", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addWorkday(data) {
+  const ref = await addDoc(workdaysCol(), {
+    date: data.date || new Date().toISOString().slice(0, 10),
+    note: data.note?.trim() || "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function deleteWorkday(id) {
+  await deleteDoc(doc(db, "workdays", id));
+}
+
 // ---- Bulk actions -------------------------------------------------
 export async function bulkAddService(barcodes, svc) {
   for (const bc of barcodes) await addService(bc, svc);
