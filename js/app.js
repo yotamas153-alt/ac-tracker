@@ -45,6 +45,7 @@ let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
 let listContext = { building: null };  // which building the list is showing (null = all)
 let selectMode = false;
+let pendingAddPhoto = null;     // camera capture waiting to upload with a new unit
 const selected = new Set();     // barcodes selected for bulk actions
 
 const $  = (sel, root = document) => root.querySelector(sel);
@@ -266,6 +267,17 @@ function wireUI() {
   $("#addForm").addEventListener("submit", onAddSubmit);
   $("#btnScanAdd").addEventListener("click", () =>
     startScan((code) => { $('#addForm [name=barcode]').value = cleanBarcode(code); }));
+  // camera capture for a new unit (in-app; not saved to the device gallery)
+  $("#btnAddUnitPhoto").addEventListener("click", () => $("#addPhotoInput").click());
+  $("#addPhotoInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pendingAddPhoto = file;
+    const prev = $("#addPhotoPreview");
+    prev.src = URL.createObjectURL(file);
+    prev.hidden = false;
+    $("#addPhotoStatus").textContent = "📷 התמונה תישמר עם המזגן";
+  });
 
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
@@ -896,7 +908,16 @@ async function onAddSubmit(e) {
 
   try {
     await saveUnit(unit);
+    // attach the captured photo (compressed, straight to the cloud DB)
+    if (pendingAddPhoto) {
+      try { await addPhoto(barcode, await compressImage(pendingAddPhoto)); }
+      catch (photoErr) { console.error(photoErr); toast("המזגן נשמר, אך העלאת התמונה נכשלה", true); }
+    }
     f.reset();
+    pendingAddPhoto = null;
+    $("#addPhotoPreview").hidden = true;
+    $("#addPhotoPreview").src = "";
+    $("#addPhotoStatus").textContent = "";
     msg.textContent = "✅ נשמר בהצלחה!";
     msg.className = "form-msg is-ok";
     toast("✅ המזגן נוסף");

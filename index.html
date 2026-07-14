@@ -105,7 +105,15 @@
         <label>ברקוד
           <div class="input-with-btn">
             <input name="barcode" required placeholder="מספר ברקוד">
-            <button type="button" id="btnScanAdd" class="btn btn--icon" title="סרוק">📷</button>
+            <button type="button" id="btnScanAdd" class="btn btn--scan" title="סרוק">📷</button>
+          </div>
+        </label>
+        <label>תמונת המזגן
+          <div class="add-photo">
+            <button type="button" id="btnAddUnitPhoto" class="btn btn--ghost btn--sm">📷 צלם תמונה</button>
+            <input id="addPhotoInput" type="file" accept="image/*" capture="environment" hidden>
+            <img id="addPhotoPreview" class="add-photo__preview" hidden alt="תצוגה מקדימה">
+            <span id="addPhotoStatus" class="add-photo__status"></span>
           </div>
         </label>
         <label>מבנה
