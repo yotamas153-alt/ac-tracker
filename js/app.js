@@ -55,7 +55,8 @@ let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
 let listContext = { building: null };  // which building the list is showing (null = all)
 let selectMode = false;
-let pendingAddPhoto = null;     // camera capture waiting to upload with a new unit
+let pendingAddPhotoLabel = null; // camera capture (model nameplate) waiting to upload with a new unit
+let pendingAddPhotoEvap  = null; // camera capture (evaporator) waiting to upload with a new unit
 const selected = new Set();     // barcodes selected for bulk actions
 
 const $  = (sel, root = document) => root.querySelector(sel);
@@ -299,15 +300,26 @@ function wireUI() {
   $("#btnScanAdd").addEventListener("click", () =>
     startScan((code) => { $('#addForm [name=barcode]').value = cleanBarcode(code); }));
   // camera capture for a new unit (in-app; not saved to the device gallery)
-  $("#btnAddUnitPhoto").addEventListener("click", () => $("#addPhotoInput").click());
-  $("#addPhotoInput").addEventListener("change", (e) => {
+  // two slots: the model nameplate sticker, and the evaporator (indoor coil)
+  $("#btnAddUnitPhotoLabel").addEventListener("click", () => $("#addPhotoInputLabel").click());
+  $("#addPhotoInputLabel").addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    pendingAddPhoto = file;
-    const prev = $("#addPhotoPreview");
+    pendingAddPhotoLabel = file;
+    const prev = $("#addPhotoPreviewLabel");
     prev.src = URL.createObjectURL(file);
     prev.hidden = false;
-    $("#addPhotoStatus").textContent = "📷 התמונה תישמר עם המזגן";
+    $("#addPhotoStatusLabel").textContent = "📷 התמונה תישמר עם המזגן";
+  });
+  $("#btnAddUnitPhotoEvap").addEventListener("click", () => $("#addPhotoInputEvap").click());
+  $("#addPhotoInputEvap").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pendingAddPhotoEvap = file;
+    const prev = $("#addPhotoPreviewEvap");
+    prev.src = URL.createObjectURL(file);
+    prev.hidden = false;
+    $("#addPhotoStatusEvap").textContent = "📷 התמונה תישמר עם המזגן";
   });
 
   // side menu
@@ -828,6 +840,7 @@ function renderPhotos(barcode, list) {
     ? list.map((p) => `
         <div class="photo-thumb">
           <img src="${esc(p.url)}" alt="">
+          ${p.label ? `<span class="photo-thumb__label">${esc(p.label)}</span>` : ""}
           <button class="photo-del" data-del="${esc(p.id)}" title="מחק">✕</button>
         </div>`).join("")
     : `<p class="tl-empty">אין תמונות עדיין.</p>`;
@@ -992,16 +1005,24 @@ async function onAddSubmit(e) {
 
   try {
     await saveUnit(unit);
-    // attach the captured photo (compressed, straight to the cloud DB)
-    if (pendingAddPhoto) {
-      try { await addPhoto(barcode, await compressImage(pendingAddPhoto)); }
-      catch (photoErr) { console.error(photoErr); toast("המזגן נשמר, אך העלאת התמונה נכשלה", true); }
+    // attach the captured photos (compressed, straight to the cloud DB)
+    if (pendingAddPhotoLabel) {
+      try { await addPhoto(barcode, await compressImage(pendingAddPhotoLabel), "פתקית מודל"); }
+      catch (photoErr) { console.error(photoErr); toast("המזגן נשמר, אך העלאת תמונת הפתקית נכשלה", true); }
+    }
+    if (pendingAddPhotoEvap) {
+      try { await addPhoto(barcode, await compressImage(pendingAddPhotoEvap), "מאייד"); }
+      catch (photoErr) { console.error(photoErr); toast("המזגן נשמר, אך העלאת תמונת המאייד נכשלה", true); }
     }
     f.reset();
-    pendingAddPhoto = null;
-    $("#addPhotoPreview").hidden = true;
-    $("#addPhotoPreview").src = "";
-    $("#addPhotoStatus").textContent = "";
+    pendingAddPhotoLabel = null;
+    pendingAddPhotoEvap = null;
+    $("#addPhotoPreviewLabel").hidden = true;
+    $("#addPhotoPreviewLabel").src = "";
+    $("#addPhotoStatusLabel").textContent = "";
+    $("#addPhotoPreviewEvap").hidden = true;
+    $("#addPhotoPreviewEvap").src = "";
+    $("#addPhotoStatusEvap").textContent = "";
     msg.textContent = "✅ נשמר בהצלחה!";
     msg.className = "form-msg is-ok";
     toast("✅ המזגן נוסף");

@@ -520,6 +520,10 @@ textarea { resize: vertical; }
   position: absolute; top: 4px; inset-inline-start: 4px; width: 24px; height: 24px; border-radius: 50%;
   border: none; cursor: pointer; background: rgba(7,11,22,.7); color: #fff; font-size: 13px; line-height: 1;
 }
+.photo-thumb__label {
+  position: absolute; bottom: 0; inset-inline: 0; padding: 4px 6px; font-size: 11px; font-weight: 600;
+  background: rgba(7,11,22,.7); color: #fff; text-align: center; pointer-events: none;
+}
 .photo-viewer {
   position: fixed; inset: 0; z-index: 90; display: grid; place-items: center;
   background: rgba(3,6,15,.94); padding: 20px; animation: fade .2s ease;
