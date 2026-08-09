@@ -395,6 +395,18 @@ textarea { resize: vertical; }
 }
 .config-warn code { background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 5px; }
 
+/* ---------- Login gate ---------- */
+.login-screen {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-soft); padding: 20px;
+}
+.login-screen[hidden] { display: none; }
+.login-screen__box { width: 100%; max-width: 340px; text-align: center; }
+.login-screen__logo { font-size: 48px; margin-bottom: 4px; }
+.login-screen__box h2 { margin: 0 0 8px; font-size: 22px; font-weight: 800; }
+.login-screen__box label { text-align: start; }
+
 /* ---------- Scanner overlay ---------- */
 .scan-overlay {
   position: fixed; inset: 0; z-index: 80;

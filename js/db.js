@@ -3,7 +3,7 @@
 //  All reads/writes to the cloud database go through this module.
 //  Uses the Firebase v10 modular SDK loaded from Google's CDN.
 // ===================================================================
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -21,7 +21,7 @@ let db = null;
 /** Initialise Firebase + Firestore (with offline persistence). */
 export function initDb() {
   if (!isConfigured) return null;
-  const app = initializeApp(firebaseConfig);
+  const app = getApps()[0] || initializeApp(firebaseConfig);
   // Offline-first: cache keeps the app working with no signal in the field
   // and syncs automatically when the connection returns.
   db = initializeFirestore(app, {

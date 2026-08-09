@@ -21,6 +21,10 @@ const {
   watchVehicleItems, addVehicleItem, updateVehicleItem, deleteVehicleItem,
   bulkAddService, bulkAppendNote,
 } = store;
+// Login gate — only loaded in cloud mode, so offline/local mode never touches Firebase.
+const { initAuth, login, logout } = isConfigured
+  ? await import("./auth.js")
+  : { initAuth: null, login: null, logout: null };
 const isGuy = () => (localStorage.getItem("ac_username") || "").trim() === "גיא";
 
 // ---- Work-status definitions ---------------------------------------
@@ -78,18 +82,31 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch((e) => console.warn("SW:", e));
 }
 
-initDb();
-startRealtime();
+function boot() {
+  initDb();
+  startRealtime();
+  initBackHandler();
+  updateGreeting();
+  setInterval(updateGreeting, 60000);           // keep it current
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) updateGreeting(); });
+  if (!isConfigured) initLocalMode();
+  if (isConfigured) setTimeout(checkLocalRecovery, 3500);
+}
+
 wireUI();
-initBackHandler();
-updateGreeting();
-setInterval(updateGreeting, 60000);           // keep it current
-document.addEventListener("visibilitychange", () => { if (!document.hidden) updateGreeting(); });
-if (!isConfigured) initLocalMode();
+if (isConfigured) {
+  wireLogin();
+  $("#loginScreen").hidden = false;   // cover the app shell until auth state is known
+  let booted = false;
+  initAuth((user) => {
+    $("#loginScreen").hidden = !!user;
+    if (user && !booted) { booted = true; boot(); }
+  });
+} else {
+  boot();
+}
 // In cloud mode, detect units that were saved only on THIS device (from the
 // earlier local-only period) and offer to upload them so nothing is lost.
-if (isConfigured) setTimeout(checkLocalRecovery, 3500);
-
 let recoveryChecked = false;
 function checkLocalRecovery() {
   if (recoveryChecked) return;
@@ -333,6 +350,8 @@ function wireUI() {
   $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
   $("#menuRecover").addEventListener("click", () => { closeSideMenu(); openRecoveryScreen(); });
   $("#menuAbout").addEventListener("click", () => { closeSideMenu(); openAbout(); });
+  $("#menuLogout").hidden = !isConfigured;
+  $("#menuLogout").addEventListener("click", async () => { closeSideMenu(); await logout(); });
 
   // team updates
   $("#teamAdd").addEventListener("click", openUpdateForm);
@@ -353,6 +372,27 @@ function wireUI() {
   // modal close
   $("#modal").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+}
+
+// ===================================================================
+//  Login gate (cloud mode only)
+// ===================================================================
+function wireLogin() {
+  $("#loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const err = $("#loginError");
+    const btn = f.querySelector("button[type=submit]");
+    err.textContent = "";
+    btn.disabled = true;
+    try {
+      await login(f.email.value.trim(), f.password.value);
+    } catch (loginErr) {
+      console.error(loginErr);
+      err.textContent = "אימייל או סיסמה שגויים";
+    }
+    btn.disabled = false;
+  });
 }
 
 function switchView(name) {

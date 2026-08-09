@@ -25,7 +25,7 @@ Hosted free on **GitHub Pages**, powered by **Firebase Firestore** (also free ti
 
 ## 🚀 One-time setup (≈5 minutes)
 
-You only do steps 1–2 once. After that, editing data never touches the code again.
+You only do steps 1–4 once. After that, editing data never touches the code again.
 
 ### 1. Create a Firebase project + database
 1. Go to <https://console.firebase.google.com> → **Add project** (any name, e.g. `ac-tracker`). You can disable Google Analytics.
@@ -37,9 +37,18 @@ You only do steps 1–2 once. After that, editing data never touches the code ag
 
 ### 2. Paste your config
 Open **`js/firebase-config.js`** and replace the placeholder values with the ones
-from step 3 (apiKey, authDomain, projectId, etc.). Save.
+from step 1.4 (apiKey, authDomain, projectId, etc.). Save.
 
-### 3. Set the database access rule (you chose "open / no login")
+### 3. Enable login (Email/Password)
+In the left menu: **Build → Authentication → Get started → Sign-in method →
+Email/Password → Enable → Save**.
+
+Then create a login for yourself and anyone on your team:
+**Authentication → Users → Add user** → enter an email + password for each
+person. There's no public sign-up screen in the app — only accounts you create
+here can log in, which is what keeps the data private to your team.
+
+### 4. Set the database access rule
 In Firestore → **Rules** tab, paste this and **Publish**:
 
 ```
@@ -47,15 +56,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }
 ```
 
-> ⚠️ **Note:** `if true` means anyone with your site link can read/edit the data.
-> That's fine for personal use. When you want to lock it down later, we can switch
-> to a simple login — ask and it's ~15 minutes of work.
+This restricts every read and write to someone logged in with an account you
+created in step 3. Nobody else — not even someone with your site link — can
+see or change the data.
 
 ---
 

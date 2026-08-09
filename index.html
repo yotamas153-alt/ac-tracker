@@ -15,6 +15,22 @@
 </head>
 
 <body>
+  <!-- ===== Login gate (cloud mode only; hidden unless shown by JS) ===== -->
+  <div id="loginScreen" class="login-screen" hidden>
+    <form id="loginForm" class="form login-screen__box">
+      <div class="login-screen__logo">❄️</div>
+      <h2>AC Tracker</h2>
+      <label>אימייל
+        <input name="email" type="email" required autocomplete="username">
+      </label>
+      <label>סיסמה
+        <input name="password" type="password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn--primary">🔒 התחברות</button>
+      <p id="loginError" class="form-msg is-err"></p>
+    </form>
+  </div>
+
   <!-- ===== App header ===== -->
   <header class="app-header">
     <div class="app-header__title">
@@ -221,6 +237,7 @@
       <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
       <button class="side__item" id="menuRecover">🛟 <span>שחזור מזגנים מקומיים</span></button>
       <button class="side__item" id="menuAbout">ℹ️ <span>אודות</span></button>
+      <button class="side__item" id="menuLogout" hidden>🔒 <span>התנתקות</span></button>
     </nav>
   </div>
 
