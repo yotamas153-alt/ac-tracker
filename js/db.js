@@ -185,8 +185,8 @@ export function watchPhotos(barcode, onData, onError) {
     (err) => onError && onError(err)
   );
 }
-export async function addPhoto(barcode, url) {
-  await addDoc(photosCol(barcode), { url, createdAt: serverTimestamp() });
+export async function addPhoto(barcode, url, label = "") {
+  await addDoc(photosCol(barcode), { url, label, createdAt: serverTimestamp() });
 }
 export async function deletePhoto(barcode, id) {
   await deleteDoc(doc(db, "units", String(barcode), "photos", id));

@@ -253,9 +253,9 @@ export function watchPhotos(barcode, onData) {
   onData(photoArray(barcode));
   return () => photoListeners.get(barcode)?.delete(onData);
 }
-export async function addPhoto(barcode, url) {
+export async function addPhoto(barcode, url, label = "") {
   if (!photos[barcode]) photos[barcode] = [];
-  photos[barcode].push({ id: newId(), url, createdAt: now() });
+  photos[barcode].push({ id: newId(), url, label, createdAt: now() });
   savePhotos();
   notifyPhotos(barcode);
 }
