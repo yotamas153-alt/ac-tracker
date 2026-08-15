@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#070b16">
-  <title>❄️ AC Tracker — פרויקטים</title>
+  <title>❄️ ג.פ מיזוגים בע"מ</title>
 
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>">
@@ -20,7 +20,7 @@
     <div class="app-header__title">
       <span class="app-header__logo">❄️</span>
       <div>
-        <h1>AC Tracker — פרויקטים</h1>
+        <h1>ג.פ מיזוגים בע"מ</h1>
         <p id="headerProjectName" class="header-project" title="החלף פרויקט">בחר פרויקט</p>
       </div>
     </div>
@@ -36,7 +36,7 @@
   <!-- ===== Main content (views swap in here) ===== -->
   <main id="app" class="app-main">
 
-    <!-- View: Projects (job sites) — landing screen / switcher -->
+    <!-- View: Projects (job sites) — top-level switcher, default landing screen -->
     <section id="view-projects" class="view is-active">
       <div class="section-head">
         <h2>🗂️ הפרויקטים שלי</h2>
@@ -45,19 +45,10 @@
       <div id="projectsGrid" class="proj-grid"></div>
     </section>
 
-    <!-- View: Search -->
-    <section id="view-search" class="view">
+    <!-- View: Home (per-project landing screen: widgets + section grid) -->
+    <section id="view-home" class="view">
       <div id="upcomingCard" class="upcoming"></div>
       <div id="vacWeek"></div>
-      <div class="search-bar">
-        <div class="search-field">
-          <span class="search-field__icon">🔍</span>
-          <input id="search" type="search" inputmode="text" placeholder="סרוק או הקלד ברקוד / מבנה / מיקום">
-        </div>
-        <button id="btnScan" class="btn btn--scan" title="סרוק ברקוד">📷</button>
-      </div>
-
-      <!-- Team Updates widget -->
       <div id="teamUpdates" class="team">
         <div class="team__head">
           <span>💬 עדכוני צוות</span>
@@ -65,27 +56,25 @@
         </div>
         <div id="teamList" class="team__list"></div>
       </div>
-
-      <div id="searchResults" class="results"></div>
+      <div id="homeGrid" class="sect-grid"></div>
     </section>
 
-    <!-- View: Buildings -->
-    <section id="view-buildings" class="view">
-      <div id="buildingsGrid" class="bld-grid"></div>
-    </section>
-
-    <!-- View: All units / building drill-down (with bulk select) -->
-    <section id="view-list" class="view">
+    <!-- View: Equipment (installed AC units) — search + bulk select -->
+    <section id="view-equipment" class="view">
       <div class="list-head">
-        <button class="btn btn--ghost btn--sm" id="listBack" hidden>‹ מבנים</button>
-        <h2 id="listTitle">כל המזגנים</h2>
+        <h2>❄️ ציוד ההתקנה</h2>
         <div class="list-head__actions">
-          <button class="btn btn--ghost btn--sm" id="btnParts">🧰 חוסרים</button>
           <button class="btn btn--ghost btn--sm" id="btnSelect">בחירה</button>
         </div>
       </div>
+      <div class="search-bar">
+        <div class="search-field">
+          <span class="search-field__icon">🔍</span>
+          <input id="search" type="search" inputmode="text" placeholder="חפש ברקוד / סוג / מיקום">
+        </div>
+        <button id="btnScan" class="btn btn--scan" title="סרוק ברקוד">📷</button>
+      </div>
       <div class="list-toolbar">
-        <input id="listFilter" type="search" placeholder="סנן לפי מבנה / מיקום / סוג">
         <span id="listCount" class="chip">0</span>
       </div>
       <div id="bulkBar" class="bulk-bar" hidden>
@@ -94,21 +83,7 @@
         <button class="btn btn--sm" id="bulkNote">➕ הערה</button>
         <button class="btn btn--sm btn--primary" id="bulkMaint">🔧 טיפול</button>
       </div>
-      <div id="listResults" class="results"></div>
-    </section>
-
-    <!-- View: Complaints / service requests -->
-    <section id="view-complaints" class="view">
-      <div class="section-head">
-        <h2>📣 תקלות ופניות</h2>
-        <button class="btn btn--primary btn--sm" id="btnNewComplaint">➕ פנייה</button>
-      </div>
-      <div class="cmpl-filter">
-        <button class="seg is-active" data-cf="open">פתוחות</button>
-        <button class="seg" data-cf="all">הכל</button>
-        <button class="seg" data-cf="done">טופלו</button>
-      </div>
-      <div id="complaintsList" class="results"></div>
+      <div id="equipmentResults" class="results"></div>
     </section>
 
     <!-- View: Add unit -->
@@ -138,7 +113,7 @@
           </div>
         </label>
         <label>מבנה
-          <input name="building" list="buildings" placeholder="שם המבנה">
+          <input name="building" list="buildings" placeholder="שם המבנה (אופציונלי)">
         </label>
         <label>סוג
           <input name="type" list="types" placeholder="עילי / מיני / מרכזי...">
@@ -160,7 +135,91 @@
       </form>
     </section>
 
-    <!-- View: Vehicle inventory -->
+    <!-- View: Tasks -->
+    <section id="view-tasks" class="view">
+      <div class="section-head">
+        <h2>✅ משימות</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewTask">➕ משימה</button>
+      </div>
+      <div class="cmpl-filter task-filter">
+        <button class="seg is-active" data-tf="open">פתוחות</button>
+        <button class="seg" data-tf="all">הכל</button>
+        <button class="seg" data-tf="done">סגורות</button>
+      </div>
+      <div id="tasksList" class="results"></div>
+    </section>
+
+    <!-- View: Dashboard (status only) -->
+    <section id="view-dash" class="view">
+      <div id="dashStats" class="dash"></div>
+    </section>
+
+    <!-- View: Contacts -->
+    <section id="view-contacts" class="view">
+      <div class="section-head">
+        <h2>👤 אנשי קשר</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewContact">➕ איש קשר</button>
+      </div>
+      <div id="contactsList" class="results"></div>
+    </section>
+
+    <!-- View: Project crew -->
+    <section id="view-crew" class="view">
+      <div class="section-head"><h2>👷 צוות הפרויקט</h2></div>
+      <div id="crewBody"></div>
+    </section>
+
+    <!-- View: Plans -->
+    <section id="view-plans" class="view">
+      <div class="section-head">
+        <h2>📐 תוכניות לביצוע</h2>
+        <button class="btn btn--primary btn--sm" data-media-add="plan">➕ תמונה</button>
+      </div>
+      <div class="photo-grid" id="mediaGrid-plan"></div>
+    </section>
+
+    <!-- View: Photo gallery -->
+    <section id="view-gallery" class="view">
+      <div class="section-head">
+        <h2>🖼️ גלריית תמונות</h2>
+        <button class="btn btn--primary btn--sm" data-media-add="gallery">➕ תמונה</button>
+      </div>
+      <div class="photo-grid" id="mediaGrid-gallery"></div>
+    </section>
+
+    <!-- View: Warranty photos -->
+    <section id="view-warranty" class="view">
+      <div class="section-head">
+        <h2>📄 אחריות מזגנים</h2>
+        <button class="btn btn--primary btn--sm" data-media-add="warranty">➕ תמונה</button>
+      </div>
+      <div class="photo-grid" id="mediaGrid-warranty"></div>
+    </section>
+
+    <!-- View: Team messages (full history) -->
+    <section id="view-messages" class="view">
+      <div class="section-head">
+        <h2>💬 הודעות צוות</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewMessage">➕ עדכון</button>
+      </div>
+      <div id="messagesList" class="team__list"></div>
+    </section>
+
+    <!-- View: Complaints / service requests -->
+    <section id="view-complaints" class="view">
+      <div class="section-head">
+        <h2>📣 תקלות ופניות</h2>
+        <button class="btn btn--primary btn--sm" id="btnNewComplaint">➕ פנייה</button>
+      </div>
+      <div class="cmpl-filter">
+        <button class="seg is-active" data-cf="open">פתוחות</button>
+        <button class="seg" data-cf="all">הכל</button>
+        <button class="seg" data-cf="done">טופלו</button>
+      </div>
+      <div id="complaintsList" class="results"></div>
+    </section>
+
+    <!-- View: Vehicle inventory (global, staff-level) -->
     <section id="view-vehicles" class="view">
       <div class="section-head"><h2>🚚 מלאי רכבים</h2></div>
       <div class="veh-tabs" id="vehTabs">
@@ -171,7 +230,7 @@
       <div id="vehicleBody"></div>
     </section>
 
-    <!-- View: Vacations -->
+    <!-- View: Vacations (global, staff-level) -->
     <section id="view-vacations" class="view">
       <div class="section-head">
         <h2>🏖️ חופשות</h2>
@@ -180,14 +239,9 @@
       <div id="vacationsList" class="results"></div>
     </section>
 
-    <!-- View: Calendar / schedule / workdays -->
+    <!-- View: Calendar (scheduled visits + work log) -->
     <section id="view-calendar" class="view">
       <div id="calendarBody"></div>
-    </section>
-
-    <!-- View: Dashboard (status only) -->
-    <section id="view-dash" class="view">
-      <div id="dashStats" class="dash"></div>
     </section>
 
   </main>
@@ -200,10 +254,10 @@
 
   <!-- ===== Bottom navigation ===== -->
   <nav class="tabbar">
-    <button class="tab" data-view="search">🔍<span>חיפוש</span></button>
-    <button class="tab" data-view="buildings">🏢<span>מבנים</span></button>
+    <button class="tab" data-view="home">🏠<span>בית</span></button>
+    <button class="tab" data-view="equipment">❄️<span>ציוד</span></button>
     <button class="tab" data-view="add">➕<span>הוספה</span></button>
-    <button class="tab" data-view="calendar">📅<span>יומן</span></button>
+    <button class="tab" data-view="tasks">✅<span>משימות</span></button>
     <button class="tab" data-view="dash">📊<span>דוח</span></button>
   </nav>
 
@@ -225,11 +279,9 @@
       <button class="side__item" id="menuProjects">🗂️ <span>פרויקטים — כל האתרים</span></button>
       <button class="side__item" id="menuVehicles">🚚 <span>מלאי רכבים</span></button>
       <button class="side__item" id="menuVacations">🏖️ <span>חופשות</span></button>
-      <button class="side__item" id="menuComplaints">📣 <span>תקלות ופניות</span></button>
-      <button class="side__item" id="menuParts">🧰 <span>חוסרים — כל המבנים</span></button>
       <button class="side__item" id="menuExport">📊 <span>ייצוא לאקסל</span></button>
       <button class="side__item" id="menuName">👤 <span>השם שלי</span></button>
-      <button class="side__item" id="menuRecover">🛟 <span>שחזור מזגנים מקומיים</span></button>
+      <button class="side__item" id="menuRecover">🛟 <span>שחזור ציוד מקומי</span></button>
       <button class="side__item" id="menuAbout">ℹ️ <span>אודות</span></button>
     </nav>
   </div>

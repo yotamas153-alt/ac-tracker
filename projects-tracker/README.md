@@ -1,11 +1,13 @@
-# 🗂️ AC Tracker — פרויקטים
+# 🗂️ ג.פ מיזוגים בע"מ
 
 A sibling app to [AC Tracker](../README.md), for when the work isn't one big
 site but **many small, independent projects** running in parallel. Each
-project (job site) gets its own buildings, AC units, complaints, missing
-parts and scheduled visits — completely separate from every other project.
-Staff-level things that aren't tied to one site (vacations, van inventory)
-stay shared across all of them.
+project (job site) is organized into a fixed set of sections instead of a
+building hierarchy: installed equipment (AC units, with the original app's
+full status + service-history tracking), execution plans, contacts, a photo
+gallery, a work log, warranty photos, the project's crew, tasks, team
+messages, complaints and missing parts. Staff-level things that aren't tied
+to one site (vacations, van inventory) stay shared across every project.
 
 Same tech as the original: mobile-first, barcode scanning, real-time cloud
 database, per-unit service history, offline support, installable PWA.
@@ -16,33 +18,39 @@ free tier).
 
 ## ✨ What's included
 
-| Feature | Details |
+Per project:
+
+| Section | Details |
 |---|---|
-| 🗂️ Projects | Create/switch between job sites; each one's data is fully separate |
-| 🔍 Search | Live search across barcode / building / type / location / notes, within the open project |
-| 📷 Barcode scan | Camera scan fills the search box or the add form |
-| ➕ / ✏️ / 🗑️ | Add, edit and delete units — saved to the cloud instantly |
-| 🔧 Service history | Every visit logged per unit (date + what was done + technician) |
-| 📡 Real-time sync | Changes appear live on every device, no refresh |
-| 📴 Offline | Works with no signal in the field, syncs when back online |
-| 📊 Dashboard | Totals + breakdown by building and type, per project |
-| 🏖️ / 🚚 Staff tools | Vacations and vehicle inventory are shared across every project |
-| 📱 Installable | "Add to Home Screen" — runs like a native app |
+| ❄️ ציוד ההתקנה | Installed AC units — barcode scan, status workflow, full service history, photos |
+| 📐 תוכניות לביצוע | Execution-plan photos |
+| 👤 אנשי קשר | Project contacts (name, role, phone, notes) |
+| 🖼️ גלריית תמונות | General project photo gallery |
+| 📄 אחריות מזגנים | Warranty photos |
+| 👷 צוות הפרויקט | Roster of who worked on this project |
+| 📅 יומן עבודה | Work log (actual dates worked) + scheduled upcoming visits |
+| 💬 הודעות צוות | Team messages |
+| 📣 תקלות ופניות | Customer complaints / service requests |
+| 🧰 חוסרים | Missing parts/equipment checklist |
+| 📊 דוח | Status totals, open tasks, missing parts, today's workers |
+
+Shared across every project (staff-level, not site-level): 🏖️ vacation
+requests (with approval) and 🚚 per-worker vehicle inventory.
+
+Plans, the photo gallery and warranty photos are **images only** — the same
+camera-capture / compress / upload flow the app already uses for unit
+photos (no PDF support, no external file storage).
 
 ---
 
 ## 🗂️ How projects work
 
-The **Projects** screen is the landing page. Pick a project to open it —
-the tabs (search, buildings, add, calendar, dashboard) then all show only
-that project's data. Use the project name in the header (or the side menu's
-"🗂️ פרויקטים") to switch to a different project at any time. Deleting a
-project deletes everything inside it (buildings, units, complaints, missing
-parts, scheduled visits, workday log) — that action can't be undone.
-
-Vacations and the per-worker vehicle inventory are **not** part of any
-project — they're the same list everywhere, since they're about staff, not
-a job site.
+The **Projects** screen is the landing page. Pick a project to open it — it
+lands on that project's **Home** screen (upcoming visit, team messages,
+this-week vacations, and a grid linking to every section above). Use the
+project name in the header (or the side menu's "🗂️ פרויקטים") to switch to
+a different project at any time. Deleting a project deletes everything
+inside it — that action can't be undone.
 
 ---
 
@@ -52,7 +60,7 @@ This app needs its **own** Firebase project — separate from the original
 AC Tracker's — so the two apps' data never mix.
 
 ### 1. Create a Firebase project + database
-1. Go to <https://console.firebase.google.com> → **Add project** (any name, e.g. `ac-tracker-projects`). You can disable Google Analytics.
+1. Go to <https://console.firebase.google.com> → **Add project** (any name, e.g. `gp-mizugim`). You can disable Google Analytics.
 2. In the left menu: **Build → Firestore Database → Create database**.
    - Choose a location close to you.
    - Start in **Test mode** for now (we'll set the rule below).
@@ -118,7 +126,7 @@ projects-tracker/
     ├── db.js               # Firestore data layer (all reads/writes)
     ├── local-store.js       # localStorage fallback (zero-setup mode)
     ├── scanner.js          # camera barcode scanning
-    └── app.js              # UI controller (views, search, dashboard)
+    └── app.js              # UI controller (views, sections, dashboard)
 ```
 
 ## 🔐 Data model (Firestore)
@@ -131,16 +139,19 @@ stay top-level.
 projects (collection)
   {projectId} (document)
     name, client, address, notes, cover, createdAt
-    units (subcollection)
-      {barcode} (document)      ← barcode is the document id
+    units (subcollection)       ← installed AC equipment, barcode is the document id
+      {barcode} (document)
         barcode, building, type, location, notes
-        lastService, lastServiceDate, createdAt, updatedAt
+        lastService, lastServiceDate, status, createdAt, updatedAt
         services (subcollection)  — date, description, technician, createdAt
         photos (subcollection)    — url, label, createdAt
-    buildings (subcollection)   — name, cover, updatedAt
-    complaints (subcollection)  — customer, phone, building, barcode, description, status
-    parts (subcollection)       — building, item, note, done, createdAt
-    visits (subcollection)      — building, date, time, location, workers, notes
+    contacts (subcollection)    — name, role, phone, notes, createdAt
+    crew (subcollection)        — name, role, phone, createdAt
+    tasks (subcollection)       — title, assignee, dueDate, done, createdAt
+    media (subcollection)       — category (plan|gallery|warranty), url, label, createdAt
+    complaints (subcollection)  — customer, phone, barcode, description, status
+    parts (subcollection)       — item, note, done, createdAt
+    visits (subcollection)      — title, date, time, location, workers, notes
     updates (subcollection)     — text, author, createdAt
     workdays (subcollection)    — date, note, createdAt
 

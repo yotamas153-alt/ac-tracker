@@ -4,9 +4,11 @@
 //  Used automatically when Firebase is NOT configured, so the app is
 //  fully usable with zero setup. Data lives on THIS device only.
 //
-//  Data model mirrors db.js: everything tied to one job site is keyed
-//  by projectId (e.g. "ac_units__<projectId>"); vacations and vehicle
-//  inventory are staff-level and stay under flat, unsuffixed keys.
+//  Data model mirrors db.js: everything tied to one job site (units,
+//  complaints, parts, visits, workdays, updates, contacts, crew, tasks,
+//  media) is keyed by projectId (e.g. "ac_units__<projectId>"); vacations
+//  and vehicle inventory are staff-level and stay under flat, unsuffixed
+//  keys.
 // ===================================================================
 
 const PROJ_LIST_KEY = "ac_projects";
@@ -14,11 +16,14 @@ const UNITS_KEY   = "ac_units";
 const SVC_KEY     = "ac_services";
 const PHOTO_KEY   = "ac_photos";
 const CMPL_KEY    = "ac_complaints";
-const BLD_KEY     = "ac_buildings";
 const PART_KEY    = "ac_parts";
 const VISIT_KEY   = "ac_visits";
 const UPD_KEY     = "ac_updates";
 const WD_KEY      = "ac_workdays";
+const CONTACTS_KEY = "ac_contacts";
+const CREW_KEY      = "ac_crew";
+const TASK_KEY      = "ac_tasks";
+const MEDIA_KEY     = "ac_media";
 const VAC_KEY     = "ac_vacations";
 const VEH_KEY     = "ac_vehicle_items";
 
@@ -79,7 +84,7 @@ export async function updateProject(id, fields) {
 export async function deleteProject(id) {
   delete projectsList[id];
   saveProjects();
-  for (const base of [UNITS_KEY, SVC_KEY, PHOTO_KEY, CMPL_KEY, BLD_KEY, PART_KEY, VISIT_KEY, UPD_KEY, WD_KEY]) {
+  for (const base of [UNITS_KEY, SVC_KEY, PHOTO_KEY, CMPL_KEY, PART_KEY, VISIT_KEY, UPD_KEY, WD_KEY, CONTACTS_KEY, CREW_KEY, TASK_KEY, MEDIA_KEY]) {
     localStorage.removeItem(k(base, id));
   }
   notifyProjects();
@@ -89,7 +94,7 @@ export async function deleteProject(id) {
 //  Per-project store — one instance of this state machine per pid,
 //  cached in memory so repeated watch() calls don't re-hit localStorage.
 // ===================================================================
-const projectStores = new Map(); // pid -> { units, services, photos, complaints, buildings, parts, visits, updates, workdays, listeners: {...} }
+const projectStores = new Map(); // pid -> { units, services, photos, complaints, parts, visits, updates, workdays, contacts, crew, tasks, media, listeners: {...} }
 
 function projectStore(pid) {
   if (projectStores.has(pid)) return projectStores.get(pid);
@@ -98,20 +103,26 @@ function projectStore(pid) {
     services:    readJSON(k(SVC_KEY, pid), {}),
     photos:      readJSON(k(PHOTO_KEY, pid), {}),
     complaints:  readJSON(k(CMPL_KEY, pid), {}),
-    buildings:   readJSON(k(BLD_KEY, pid), {}),
     parts:       readJSON(k(PART_KEY, pid), {}),
     visits:      readJSON(k(VISIT_KEY, pid), {}),
     updates:     readJSON(k(UPD_KEY, pid), {}),
     workdays:    readJSON(k(WD_KEY, pid), {}),
+    contacts:    readJSON(k(CONTACTS_KEY, pid), {}),
+    crew:        readJSON(k(CREW_KEY, pid), {}),
+    tasks:       readJSON(k(TASK_KEY, pid), {}),
+    media:       readJSON(k(MEDIA_KEY, pid), {}),
     unitListeners: new Set(),
     svcListeners:  new Map(),   // barcode -> Set<fn>
     photoListeners: new Map(),  // barcode -> Set<fn>
     cmplListeners: new Set(),
-    bldListeners:  new Set(),
     partListeners: new Set(),
     visitListeners: new Set(),
     updListeners:  new Set(),
     wdListeners:   new Set(),
+    contactListeners: new Set(),
+    crewListeners: new Set(),
+    taskListeners: new Set(),
+    mediaListeners: new Map(),  // category -> Set<fn>
   };
   projectStores.set(pid, st);
   return st;
@@ -120,11 +131,14 @@ const saveUnits      = (pid) => writeJSON(k(UNITS_KEY, pid), projectStore(pid).u
 const saveServices   = (pid) => writeJSON(k(SVC_KEY, pid), projectStore(pid).services);
 const savePhotos     = (pid) => { try { writeJSON(k(PHOTO_KEY, pid), projectStore(pid).photos); } catch (e) { console.warn("photo storage full", e); } };
 const saveComplaints = (pid) => writeJSON(k(CMPL_KEY, pid), projectStore(pid).complaints);
-const saveBuildings  = (pid) => { try { writeJSON(k(BLD_KEY, pid), projectStore(pid).buildings); } catch (e) { console.warn("building storage full", e); } };
 const saveParts      = (pid) => writeJSON(k(PART_KEY, pid), projectStore(pid).parts);
 const saveVisits      = (pid) => writeJSON(k(VISIT_KEY, pid), projectStore(pid).visits);
 const saveUpdates    = (pid) => writeJSON(k(UPD_KEY, pid), projectStore(pid).updates);
 const saveWorkdays   = (pid) => writeJSON(k(WD_KEY, pid), projectStore(pid).workdays);
+const saveContacts   = (pid) => writeJSON(k(CONTACTS_KEY, pid), projectStore(pid).contacts);
+const saveCrew       = (pid) => writeJSON(k(CREW_KEY, pid), projectStore(pid).crew);
+const saveTasks      = (pid) => writeJSON(k(TASK_KEY, pid), projectStore(pid).tasks);
+const saveMedia      = (pid) => { try { writeJSON(k(MEDIA_KEY, pid), projectStore(pid).media); } catch (e) { console.warn("media storage full", e); } };
 
 // ---- notify (mimics Firestore real-time) --------------------------
 function unitsArray(pid) {
@@ -352,7 +366,6 @@ export async function addComplaint(pid, data) {
     customer:   data.customer?.trim()   || "",
     phone:      data.phone?.trim()      || "",
     barcode:    data.barcode?.trim()    || "",
-    building:   data.building?.trim()   || "",
     description:data.description?.trim()|| "",
     status:     data.status || "open",
     createdAt: now(), updatedAt: now(),
@@ -374,31 +387,6 @@ export async function deleteComplaint(pid, id) {
   notifyComplaints(pid);
 }
 
-// ---- Buildings (cover photos) -------------------------------------
-function buildingsArray(pid) {
-  return Object.values(projectStore(pid).buildings).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-}
-function notifyBuildings(pid) { const arr = buildingsArray(pid); projectStore(pid).bldListeners.forEach((fn) => fn(arr)); }
-export function watchBuildings(pid, onData) {
-  const st = projectStore(pid);
-  st.bldListeners.add(onData);
-  onData(buildingsArray(pid));
-  return () => st.bldListeners.delete(onData);
-}
-export async function saveBuilding(pid, name, fields) {
-  const key = String(name).trim();
-  if (!key) return;
-  const st = projectStore(pid);
-  st.buildings[key] = { name: key, ...(st.buildings[key] || {}), ...fields, updatedAt: now() };
-  saveBuildings(pid);
-  notifyBuildings(pid);
-}
-export async function deleteBuilding(pid, name) {
-  delete projectStore(pid).buildings[String(name).trim()];
-  saveBuildings(pid);
-  notifyBuildings(pid);
-}
-
 // ---- Missing parts / equipment ------------------------------------
 function partsArray(pid) {
   return Object.values(projectStore(pid).parts).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -413,8 +401,7 @@ export function watchParts(pid, onData) {
 export async function addPart(pid, data) {
   const id = newId();
   projectStore(pid).parts[id] = {
-    id, building: data.building?.trim() || "",
-    item: data.item?.trim() || "", note: data.note?.trim() || "",
+    id, item: data.item?.trim() || "", note: data.note?.trim() || "",
     done: false, createdAt: now(),
   };
   saveParts(pid);
@@ -449,7 +436,7 @@ export function watchVisits(pid, onData) {
 export async function addVisit(pid, data) {
   const id = newId();
   projectStore(pid).visits[id] = {
-    id, building: data.building?.trim() || "",
+    id, title: data.title?.trim() || "",
     date: data.date || "", time: data.time || "",
     location: data.location?.trim() || "", workers: data.workers?.trim() || "",
     notes: data.notes?.trim() || "", createdAt: now(),
@@ -520,6 +507,133 @@ export async function deleteWorkday(pid, id) {
   delete projectStore(pid).workdays[id];
   saveWorkdays(pid);
   notifyWorkdays(pid);
+}
+
+// ---- Contacts (per project) ----------------------------------------
+function contactsArray(pid) {
+  return Object.values(projectStore(pid).contacts).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+function notifyContacts(pid) { const arr = contactsArray(pid); projectStore(pid).contactListeners.forEach((fn) => fn(arr)); }
+export function watchContacts(pid, onData) {
+  const st = projectStore(pid);
+  st.contactListeners.add(onData);
+  onData(contactsArray(pid));
+  return () => st.contactListeners.delete(onData);
+}
+export async function addContact(pid, data) {
+  const id = newId();
+  projectStore(pid).contacts[id] = {
+    id, name: data.name?.trim() || "", role: data.role?.trim() || "",
+    phone: data.phone?.trim() || "", notes: data.notes?.trim() || "", createdAt: now(),
+  };
+  saveContacts(pid);
+  notifyContacts(pid);
+  return id;
+}
+export async function updateContact(pid, id, fields) {
+  const st = projectStore(pid);
+  if (!st.contacts[id]) return;
+  Object.assign(st.contacts[id], fields);
+  saveContacts(pid);
+  notifyContacts(pid);
+}
+export async function deleteContact(pid, id) {
+  delete projectStore(pid).contacts[id];
+  saveContacts(pid);
+  notifyContacts(pid);
+}
+
+// ---- Project crew (workers on this project) ------------------------
+function crewArray(pid) {
+  return Object.values(projectStore(pid).crew).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+function notifyCrew(pid) { const arr = crewArray(pid); projectStore(pid).crewListeners.forEach((fn) => fn(arr)); }
+export function watchCrew(pid, onData) {
+  const st = projectStore(pid);
+  st.crewListeners.add(onData);
+  onData(crewArray(pid));
+  return () => st.crewListeners.delete(onData);
+}
+export async function addCrewMember(pid, data) {
+  const id = newId();
+  projectStore(pid).crew[id] = {
+    id, name: data.name?.trim() || "", role: data.role?.trim() || "",
+    phone: data.phone?.trim() || "", createdAt: now(),
+  };
+  saveCrew(pid);
+  notifyCrew(pid);
+  return id;
+}
+export async function deleteCrewMember(pid, id) {
+  delete projectStore(pid).crew[id];
+  saveCrew(pid);
+  notifyCrew(pid);
+}
+
+// ---- Tasks (open/closed) --------------------------------------------
+function tasksArray(pid) {
+  return Object.values(projectStore(pid).tasks).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyTasks(pid) { const arr = tasksArray(pid); projectStore(pid).taskListeners.forEach((fn) => fn(arr)); }
+export function watchTasks(pid, onData) {
+  const st = projectStore(pid);
+  st.taskListeners.add(onData);
+  onData(tasksArray(pid));
+  return () => st.taskListeners.delete(onData);
+}
+export async function addTask(pid, data) {
+  const id = newId();
+  projectStore(pid).tasks[id] = {
+    id, title: data.title?.trim() || "", assignee: data.assignee?.trim() || "",
+    dueDate: data.dueDate || "", done: false, createdAt: now(),
+  };
+  saveTasks(pid);
+  notifyTasks(pid);
+  return id;
+}
+export async function updateTask(pid, id, fields) {
+  const st = projectStore(pid);
+  if (!st.tasks[id]) return;
+  Object.assign(st.tasks[id], fields);
+  saveTasks(pid);
+  notifyTasks(pid);
+}
+export async function deleteTask(pid, id) {
+  delete projectStore(pid).tasks[id];
+  saveTasks(pid);
+  notifyTasks(pid);
+}
+
+// ---- Media (plans / gallery / warranty — one store, filtered by
+//      category, since the three sections are structurally identical) --
+function mediaArray(pid, category) {
+  return Object.values(projectStore(pid).media)
+    .filter((m) => m.category === category)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function notifyMedia(pid, category) {
+  const set = projectStore(pid).mediaListeners.get(category);
+  if (set) { const arr = mediaArray(pid, category); set.forEach((fn) => fn(arr)); }
+}
+export function watchMedia(pid, category, onData) {
+  const st = projectStore(pid);
+  if (!st.mediaListeners.has(category)) st.mediaListeners.set(category, new Set());
+  st.mediaListeners.get(category).add(onData);
+  onData(mediaArray(pid, category));
+  return () => st.mediaListeners.get(category)?.delete(onData);
+}
+export async function addMedia(pid, category, url, label = "") {
+  const id = newId();
+  projectStore(pid).media[id] = { id, category, url, label, createdAt: now() };
+  saveMedia(pid);
+  notifyMedia(pid, category);
+}
+export async function deleteMedia(pid, id) {
+  const st = projectStore(pid);
+  const category = st.media[id]?.category;
+  delete st.media[id];
+  saveMedia(pid);
+  if (category) notifyMedia(pid, category);
 }
 
 // ---- Vacation requests (staff-level, shared across all projects) --

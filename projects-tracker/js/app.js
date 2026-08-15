@@ -14,11 +14,14 @@ const {
   watchServices, addService, updateService, deleteService,
   watchPhotos, addPhoto, deletePhoto,
   watchComplaints, addComplaint, updateComplaint, deleteComplaint,
-  watchBuildings, saveBuilding, deleteBuilding,
   watchParts, addPart, updatePart, deletePart,
   watchVisits, addVisit, updateVisit, deleteVisit,
   watchUpdates, addUpdate, deleteUpdate,
   watchWorkdays, addWorkday, deleteWorkday,
+  watchContacts, addContact, updateContact, deleteContact,
+  watchCrew, addCrewMember, deleteCrewMember,
+  watchTasks, addTask, updateTask, deleteTask,
+  watchMedia, addMedia, deleteMedia,
   watchVacations, addVacation, updateVacation, deleteVacation,
   watchVehicleItems, addVehicleItem, updateVehicleItem, deleteVehicleItem,
   bulkAddService, bulkAppendNote,
@@ -39,6 +42,19 @@ const st = (k) => STATUS[k] || STATUS.not_started;
 // common missing-part quick items
 const PART_ITEMS = ["קבל", "מנוע", "גז", "צינור", "כבל", "משאבת ניקוז", "ברגים", "אחר"];
 
+// project-home section cards
+const HOME_SECTIONS = [
+  { view: "plans",     icon: "📐", label: "תוכניות לביצוע" },
+  { view: "contacts",  icon: "👤", label: "אנשי קשר" },
+  { view: "gallery",   icon: "🖼️", label: "גלריית תמונות" },
+  { view: "warranty",  icon: "📄", label: "אחריות מזגנים" },
+  { view: "crew",      icon: "👷", label: "צוות הפרויקט" },
+  { view: "calendar",  icon: "📅", label: "יומן עבודה" },
+  { view: "messages",  icon: "💬", label: "הודעות צוות" },
+  { view: "complaints",icon: "📣", label: "תקלות ופניות" },
+  { view: "parts",     icon: "🧰", label: "חוסרים" },
+];
+
 // ---- Local state -----------------------------------------------------
 // PROJECTS = the job sites themselves (top-level). Everything below is
 // scoped to whichever one is currently open (currentProjectId), except
@@ -47,22 +63,24 @@ let PROJECTS = [];              // live mirror of the projects list (job sites)
 let currentProjectId = localStorage.getItem("ac_current_project") || null;
 let projectsBooted = false;     // true once the first projects snapshot has arrived
 
-let UNITS = [];                 // live mirror of the current project's units
+let UNITS = [];                 // live mirror of the current project's installed equipment (AC units)
 let COMPLAINTS = [];            // live mirror of complaints
-let BUILDINGS = {};             // { name: {name, cover} } from buildings collection
 let PARTS = [];                 // live mirror of missing parts
 let VISITS = [];                // live mirror of this project's scheduled visits
-let UPDATES = [];                // live mirror of team updates
-let WORKDAYS = [];              // live mirror of project workdays
+let UPDATES = [];               // live mirror of team messages
+let WORKDAYS = [];              // live mirror of the work log
+let CONTACTS = [];              // live mirror of project contacts
+let CREW = [];                  // live mirror of the project's crew roster
+let TASKS = [];                 // live mirror of open/closed tasks
+let MEDIA = { plan: [], gallery: [], warranty: [] };  // plans / photo gallery / warranty photos
 let VACATIONS = [];             // live mirror of vacation requests (staff-level)
 let VEHICLE_ITEMS = [];         // live mirror of vehicle inventory (staff-level)
 let vehicleSel = "יותם";        // currently viewed vehicle owner
-const viewStack = ["search"];   // visited views, for the Back button
+const viewStack = ["projects"]; // visited views, for the Back button
 let suppressPush = false;       // true while restoring via Back (don't re-record)
 let currentServiceUnsub = null; // active service-log subscription
 let currentServiceList = [];    // latest service entries for the open unit
 let currentPhotoUnsub = null;   // active photo subscription
-let listContext = { building: null };  // which building the list is showing (null = all)
 let selectMode = false;
 let pendingAddPhotoLabel = null; // camera capture (model nameplate) waiting to upload with a new unit
 let pendingAddPhotoEvap  = null; // camera capture (evaporator) waiting to upload with a new unit
@@ -70,12 +88,16 @@ const selected = new Set();     // barcodes selected for bulk actions
 
 // per-project realtime subscriptions — torn down and rebuilt every time
 // the open project changes
-let unsubUnits = null, unsubComplaints = null, unsubBuildings = null,
-    unsubParts = null, unsubVisits = null, unsubUpdates = null, unsubWorkdays = null;
+let unsubUnits = null, unsubComplaints = null, unsubParts = null, unsubVisits = null,
+    unsubUpdates = null, unsubWorkdays = null, unsubContacts = null, unsubCrew = null,
+    unsubTasks = null, unsubMediaPlan = null, unsubMediaGallery = null, unsubMediaWarranty = null;
 
 // views that need a project open; anything else (projects picker, vehicles,
 // vacations) works regardless of which — or whether any — project is open
-const PROJECT_SCOPED_VIEWS = new Set(["search", "buildings", "list", "complaints", "add", "calendar", "dash"]);
+const PROJECT_SCOPED_VIEWS = new Set([
+  "home", "equipment", "add", "dash", "tasks", "contacts", "crew",
+  "plans", "gallery", "warranty", "messages", "complaints", "calendar",
+]);
 
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -127,13 +149,13 @@ function checkLocalRecovery() {
 function showRecoveryBanner(n) {
   let el = document.getElementById("recoverBanner");
   if (!el) { el = document.createElement("div"); el.id = "recoverBanner"; el.className = "recover-banner"; $("#app").prepend(el); }
-  el.innerHTML = `⚠️ נמצאו <b>${n}</b> מזגנים שנוספו במכשיר זה ולא סונכרנו לענן.
+  el.innerHTML = `⚠️ נמצאו <b>${n}</b> פריטי ציוד שנוספו במכשיר זה ולא סונכרנו לענן.
     <button class="btn btn--primary btn--sm" id="recoverBtn">☁️ שחזר לענן</button>`;
   $("#recoverBtn").addEventListener("click", async () => {
     const btn = $("#recoverBtn"); btn.disabled = true; btn.textContent = "משחזר…";
     try {
       const c = await recoverLocal();
-      el.innerHTML = `✅ שוחזרו ${c} מזגנים לענן. הנתונים סונכרנו לכל המכשירים.`;
+      el.innerHTML = `✅ שוחזרו ${c} פריטים לענן. הנתונים סונכרנו לכל המכשירים.`;
       setTimeout(() => el.remove(), 6000);
     } catch (e) { console.error(e); btn.disabled = false; btn.textContent = "נסה שוב"; toast("שגיאה בשחזור", true); }
   });
@@ -174,29 +196,29 @@ async function runRecoveryDiag() {
   const cloudIds = new Set(UNITS.map((u) => u.id));
   const missing = Object.keys(lu).filter((bc) => !cloudIds.has(bc)).sort();
   if (!localCount) {
-    box.innerHTML = `<p class="tl-empty">אין נתונים מקומיים במכשיר זה עבור הפרויקט הנוכחי. נסה במכשיר אחר שבו הוספת מזגנים.</p>`;
+    box.innerHTML = `<p class="tl-empty">אין נתונים מקומיים במכשיר זה עבור הפרויקט הנוכחי. נסה במכשיר אחר שבו הוספת ציוד.</p>`;
     return;
   }
   if (!missing.length) {
-    box.innerHTML = `<p class="tl-empty">במכשיר זה יש ${localCount} מזגנים מקומיים — כולם כבר בענן. אין מה לשחזר כאן.</p>`;
+    box.innerHTML = `<p class="tl-empty">במכשיר זה יש ${localCount} פריטים מקומיים — כולם כבר בענן. אין מה לשחזר כאן.</p>`;
     return;
   }
   box.innerHTML = `
-    <p style="font-weight:600;margin:0 0 8px">נמצאו <b>${missing.length}</b> מזגנים שקיימים רק במכשיר זה:</p>
+    <p style="font-weight:600;margin:0 0 8px">נמצאו <b>${missing.length}</b> פריטים שקיימים רק במכשיר זה:</p>
     <p style="color:var(--muted);font-size:13px;margin:0 0 12px">${missing.join(", ")}</p>
-    <button class="btn btn--primary" id="doRecover">☁️ שחזר ${missing.length} מזגנים לענן</button>`;
+    <button class="btn btn--primary" id="doRecover">☁️ שחזר ${missing.length} פריטים לענן</button>`;
   document.getElementById("doRecover").addEventListener("click", async () => {
     const b = document.getElementById("doRecover");
     b.disabled = true; b.textContent = "משחזר…";
     try {
       const c = await recoverLocal();
-      box.innerHTML = `<p class="form-msg is-ok">✅ שוחזרו ${c} מזגנים לענן. הם יופיעו כעת אצל כולם.</p>`;
+      box.innerHTML = `<p class="form-msg is-ok">✅ שוחזרו ${c} פריטים לענן. הם יופיעו כעת אצל כולם.</p>`;
     } catch (e) { console.error(e); b.disabled = false; b.textContent = "נסה שוב"; }
   });
 }
 window.runRecoveryDiag = runRecoveryDiag;
 
-/** Time-of-day greeting for ג.פ מיזוגים, based on the device's local clock. */
+/** Time-of-day greeting, based on the device's local clock. */
 function updateGreeting() {
   const el = $("#greeting");
   if (!el) return;
@@ -205,7 +227,7 @@ function updateGreeting() {
   if (h >= 5 && h < 12)       { text = "בוקר טוב";     icon = "🌅"; }
   else if (h >= 12 && h < 18) { text = "צהריים טובים"; icon = "☀️"; }
   else                        { text = "ערב טוב";      icon = "🌙"; }
-  el.innerHTML = `<span class="greeting__icon">${icon}</span> ${text} לחברת <b>ג.פ מיזוגים</b>`;
+  el.innerHTML = `<span class="greeting__icon">${icon}</span> ${text} לחברת <b>ג.פ מיזוגים בע"מ</b>`;
 }
 
 // ===================================================================
@@ -271,7 +293,7 @@ function openProject(id) {
   localStorage.setItem("ac_current_project", id);
   updateHeaderProject();
   startProjectRealtime(id);
-  switchView("search");
+  switchView("home");
 }
 
 function updateHeaderProject() {
@@ -294,10 +316,6 @@ function startProjectRealtime(pid) {
     (list) => { COMPLAINTS = list; if ($("#view-complaints").classList.contains("is-active")) renderComplaints(); },
     (err) => console.error(err)
   );
-  unsubBuildings = watchBuildings(pid,
-    (list) => { BUILDINGS = Object.fromEntries(list.map((b) => [b.name, b])); onUnitsChanged(); },
-    (err) => console.error(err)
-  );
   unsubParts = watchParts(pid,
     (list) => { PARTS = list; if ($("#view-dash").classList.contains("is-active")) renderDashboard(); refreshPartsModal(); },
     (err) => console.error(err)
@@ -311,11 +329,42 @@ function startProjectRealtime(pid) {
     (err) => console.error(err)
   );
   unsubUpdates = watchUpdates(pid,
-    (list) => { UPDATES = list; renderUpdates(); },
+    (list) => {
+      UPDATES = list; renderUpdates();
+      if ($("#view-messages").classList.contains("is-active")) renderMessages();
+    },
     (err) => console.error(err)
   );
   unsubWorkdays = watchWorkdays(pid,
     (list) => { WORKDAYS = list; if ($("#view-calendar").classList.contains("is-active")) renderCalendar(); },
+    (err) => console.error(err)
+  );
+  unsubContacts = watchContacts(pid,
+    (list) => { CONTACTS = list; if ($("#view-contacts").classList.contains("is-active")) renderContacts(); },
+    (err) => console.error(err)
+  );
+  unsubCrew = watchCrew(pid,
+    (list) => { CREW = list; if ($("#view-crew").classList.contains("is-active")) renderCrew(); },
+    (err) => console.error(err)
+  );
+  unsubTasks = watchTasks(pid,
+    (list) => {
+      TASKS = list;
+      if ($("#view-tasks").classList.contains("is-active")) renderTasks();
+      if ($("#view-dash").classList.contains("is-active")) renderDashboard();
+    },
+    (err) => console.error(err)
+  );
+  unsubMediaPlan = watchMedia(pid, "plan",
+    (list) => { MEDIA.plan = list; if ($("#view-plans").classList.contains("is-active")) renderMedia("plan"); },
+    (err) => console.error(err)
+  );
+  unsubMediaGallery = watchMedia(pid, "gallery",
+    (list) => { MEDIA.gallery = list; if ($("#view-gallery").classList.contains("is-active")) renderMedia("gallery"); },
+    (err) => console.error(err)
+  );
+  unsubMediaWarranty = watchMedia(pid, "warranty",
+    (list) => { MEDIA.warranty = list; if ($("#view-warranty").classList.contains("is-active")) renderMedia("warranty"); },
     (err) => console.error(err)
   );
 }
@@ -324,20 +373,19 @@ function startProjectRealtime(pid) {
  *  memory (called before switching to another project, or when the open
  *  project disappears). */
 function stopProjectRealtime() {
-  [unsubUnits, unsubComplaints, unsubBuildings, unsubParts, unsubVisits, unsubUpdates, unsubWorkdays]
+  [unsubUnits, unsubComplaints, unsubParts, unsubVisits, unsubUpdates, unsubWorkdays,
+   unsubContacts, unsubCrew, unsubTasks, unsubMediaPlan, unsubMediaGallery, unsubMediaWarranty]
     .forEach((u) => u && u());
-  unsubUnits = unsubComplaints = unsubBuildings = unsubParts = unsubVisits = unsubUpdates = unsubWorkdays = null;
-  UNITS = []; COMPLAINTS = []; BUILDINGS = {}; PARTS = []; VISITS = []; UPDATES = []; WORKDAYS = [];
+  unsubUnits = unsubComplaints = unsubParts = unsubVisits = unsubUpdates = unsubWorkdays =
+    unsubContacts = unsubCrew = unsubTasks = unsubMediaPlan = unsubMediaGallery = unsubMediaWarranty = null;
+  UNITS = []; COMPLAINTS = []; PARTS = []; VISITS = []; UPDATES = []; WORKDAYS = [];
+  CONTACTS = []; CREW = []; TASKS = []; MEDIA = { plan: [], gallery: [], warranty: [] };
 }
 
 function onUnitsChanged() {
   populateDatalists();
-  renderList();
+  renderEquipment();
   renderDashboard();
-  if ($("#view-buildings").classList.contains("is-active")) renderBuildings();
-  renderUpcoming();
-  // if a search is showing, refresh it live
-  if ($("#search").value.trim()) runSearch();
   // if detail modal open, refresh its fields from the latest data
   const openBarcode = $("#modal").dataset.barcode;
   if (openBarcode && !$("#modal").hidden) {
@@ -364,16 +412,11 @@ function wireUI() {
   $("#headerProjectName").addEventListener("click", () => switchView("projects"));
   $("#btnAddProject").addEventListener("click", () => openProjectForm());
 
-  // search
-  $("#search").addEventListener("input", debounce(runSearch, 120));
+  // equipment (search + bulk select)
+  $("#search").addEventListener("input", debounce(renderEquipment, 120));
   $("#btnScan").addEventListener("click", () =>
-    startScan((code) => { $("#search").value = code; runSearch(); }));
-
-  // list filter
-  $("#listFilter").addEventListener("input", debounce(renderList, 120));
-  $("#listBack").addEventListener("click", () => switchView("buildings"));
+    startScan((code) => { $("#search").value = code; renderEquipment(); }));
   $("#btnSelect").addEventListener("click", toggleSelectMode);
-  $("#btnParts").addEventListener("click", () => openPartsModal(listContext.building));
   $("#bulkAll").addEventListener("change", (e) => selectAll(e.target.checked));
   $("#bulkNote").addEventListener("click", bulkNotePrompt);
   $("#bulkMaint").addEventListener("click", bulkMaintPrompt);
@@ -412,8 +455,6 @@ function wireUI() {
   $("#menuVehicles").addEventListener("click", () => { closeSideMenu(); switchView("vehicles"); });
   $("#menuExport").addEventListener("click", () => { closeSideMenu(); openExportForm(); });
   $("#menuVacations").addEventListener("click", () => { closeSideMenu(); switchView("vacations"); });
-  $("#menuComplaints").addEventListener("click", () => { closeSideMenu(); switchView("complaints"); });
-  $("#menuParts").addEventListener("click", () => { closeSideMenu(); openPartsModal(null); });
   $("#menuName").addEventListener("click", () => { closeSideMenu(); openNameForm(); });
   $("#menuRecover").addEventListener("click", () => {
     closeSideMenu();
@@ -422,8 +463,9 @@ function wireUI() {
   });
   $("#menuAbout").addEventListener("click", () => { closeSideMenu(); openAbout(); });
 
-  // team updates
+  // team updates (home widget + full messages view)
   $("#teamAdd").addEventListener("click", openUpdateForm);
+  $("#btnNewMessage").addEventListener("click", openUpdateForm);
 
   // vehicle inventory tabs
   $$("#vehTabs .seg").forEach((s) => s.addEventListener("click", () => { vehicleSel = s.dataset.owner; renderVehicles(); }));
@@ -433,10 +475,23 @@ function wireUI() {
 
   // complaints
   $("#btnNewComplaint").addEventListener("click", () => openComplaintForm());
-  $$(".cmpl-filter .seg").forEach((s) => s.addEventListener("click", () => {
-    $$(".cmpl-filter .seg").forEach((x) => x.classList.toggle("is-active", x === s));
+  $$("#view-complaints .cmpl-filter .seg").forEach((s) => s.addEventListener("click", () => {
+    $$("#view-complaints .cmpl-filter .seg").forEach((x) => x.classList.toggle("is-active", x === s));
     renderComplaints();
   }));
+
+  // tasks
+  $("#btnNewTask").addEventListener("click", () => openTaskForm());
+  $$(".task-filter .seg").forEach((s) => s.addEventListener("click", () => {
+    $$(".task-filter .seg").forEach((x) => x.classList.toggle("is-active", x === s));
+    renderTasks();
+  }));
+
+  // contacts
+  $("#btnNewContact").addEventListener("click", () => openContactForm());
+
+  // media (plans / gallery / warranty)
+  $$("[data-media-add]").forEach((b) => b.addEventListener("click", () => addMediaPhoto(b.dataset.mediaAdd)));
 
   // modal close
   $("#modal").addEventListener("click", (e) => { if (e.target.dataset.close !== undefined) closeModal(); });
@@ -447,20 +502,25 @@ function switchView(name) {
   // views that need project data force the picker if none is open yet
   if (PROJECT_SCOPED_VIEWS.has(name) && !currentProjectId) name = "projects";
   $$(".view").forEach((v) => v.classList.toggle("is-active", v.id === `view-${name}`));
-  // the units list is reached from Buildings, so keep that tab highlighted there
-  const tabName = name === "list" ? "buildings" : name;
-  $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.view === tabName));
+  $$(".tab").forEach((t) => t.classList.toggle("is-active", t.dataset.view === name));
   stopScan();
   if (name === "projects") renderProjects();
-  if (name === "buildings") renderBuildings();
+  if (name === "home") renderHome();
+  if (name === "equipment") renderEquipment();
   if (name === "complaints") renderComplaints();
   if (name === "vacations") renderVacations();
   if (name === "vehicles") renderVehicles();
   if (name === "calendar") renderCalendar();
   if (name === "dash") renderDashboard();
-  if (name === "list") renderList();
-  // leaving the list resets bulk selection
-  if (name !== "list" && selectMode) exitSelectMode();
+  if (name === "tasks") renderTasks();
+  if (name === "contacts") renderContacts();
+  if (name === "crew") renderCrew();
+  if (name === "plans") renderMedia("plan");
+  if (name === "gallery") renderMedia("gallery");
+  if (name === "warranty") renderMedia("warranty");
+  if (name === "messages") renderMessages();
+  // leaving equipment resets bulk selection
+  if (name !== "equipment" && selectMode) exitSelectMode();
   // record for the Back button (unless we're restoring via Back)
   if (!suppressPush && viewStack[viewStack.length - 1] !== name) viewStack.push(name);
 }
@@ -563,7 +623,7 @@ function openProjectForm(id) {
     } catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
   });
   if (id) $("#projEntityDelete").addEventListener("click", async () => {
-    if (!confirm(`למחוק את הפרויקט "${p.name}"? פעולה זו תמחק את כל המבנים, המזגנים, התקלות והנתונים שבו — ואינה הפיכה.`)) return;
+    if (!confirm(`למחוק את הפרויקט "${p.name}"? פעולה זו תמחק את כל הציוד, אנשי הקשר, המסמכים והנתונים שבו — ואינה הפיכה.`)) return;
     try {
       await deleteProject(id);
       if (currentProjectId === id) {
@@ -577,17 +637,30 @@ function openProjectForm(id) {
 }
 
 // ===================================================================
-//  Search
+//  Home (per-project landing screen)
 // ===================================================================
-function runSearch() {
+function renderHome() {
+  renderUpcoming();
+  renderVacationWeek();
+  renderUpdates();
+  const box = $("#homeGrid"); if (!box) return;
+  box.innerHTML = HOME_SECTIONS.map((c) => `
+    <div class="sect-card" data-view="${c.view}">
+      <div class="sect-card__icon">${c.icon}</div>
+      <div class="sect-card__label">${esc(c.label)}</div>
+    </div>`).join("");
+  $$(".sect-card", box).forEach((el) => el.addEventListener("click", () => {
+    if (el.dataset.view === "parts") openPartsModal();
+    else switchView(el.dataset.view);
+  }));
+}
+
+// ===================================================================
+//  Equipment (installed AC units) — search + bulk select
+// ===================================================================
+function currentEquipmentUnits() {
   const term = $("#search").value.trim().toLowerCase();
-  const box = $("#searchResults");
-  if (!term) { box.innerHTML = ""; return; }
-  const matches = UNITS.filter((u) => unitMatches(u, term));
-  box.innerHTML = matches.length
-    ? matches.map(cardHTML).join("")
-    : emptyHTML("❌", "לא נמצאו תוצאות", `אין מזגן שמתאים ל־"${esc(term)}"`);
-  wireCards(box);
+  return term ? UNITS.filter((u) => unitMatches(u, term)) : UNITS;
 }
 
 function unitMatches(u, term) {
@@ -603,26 +676,14 @@ function unitMatches(u, term) {
   return false;
 }
 
-// ===================================================================
-//  Units list (all, or drilled into one building) + bulk select
-// ===================================================================
-function currentListUnits() {
-  const term = $("#listFilter").value.trim().toLowerCase();
-  let items = UNITS;
-  if (listContext.building) items = items.filter((u) => (u.building || "ללא") === listContext.building);
-  if (term) items = items.filter((u) => unitMatches(u, term));
-  return items;
-}
-
-function renderList() {
-  const items = currentListUnits();
-  $("#listTitle").textContent = listContext.building ? `🏢 ${listContext.building}` : "כל המזגנים";
-  $("#listBack").hidden = false;
+function renderEquipment() {
+  const items = currentEquipmentUnits();
+  const term = $("#search").value.trim();
   $("#listCount").textContent = items.length;
-  const box = $("#listResults");
+  const box = $("#equipmentResults");
   box.innerHTML = items.length
     ? items.map((u) => cardHTML(u, selectMode)).join("")
-    : emptyHTML("📭", "אין מזגנים", "לא נמצאו מזגנים כאן");
+    : emptyHTML("📭", term ? "לא נמצאו תוצאות" : "אין עדיין ציוד", term ? `אין פריט שמתאים ל־"${esc(term)}"` : 'הוסף מזגן עם כרטיסיית "➕ הוספה"');
   wireCards(box);
   updateBulkCount();
 }
@@ -655,7 +716,7 @@ function cardHTML(u, selecting = false) {
 }
 
 function wireCards(root) {
-  const selecting = selectMode && root.id === "listResults";
+  const selecting = selectMode && root.id === "equipmentResults";
   $$(".card", root).forEach((c) => c.addEventListener("click", () => {
     if (selecting) toggleSelect(c.dataset.barcode, c);
     else openDetail(c.dataset.barcode);
@@ -668,14 +729,14 @@ function enterSelectMode() {
   selectMode = true; selected.clear();
   $("#btnSelect").textContent = "ביטול";
   $("#bulkBar").hidden = false;
-  renderList();
+  renderEquipment();
 }
 function exitSelectMode() {
   selectMode = false; selected.clear();
   $("#btnSelect").textContent = "בחירה";
   $("#bulkBar").hidden = true;
   const all = $("#bulkAll"); if (all) all.checked = false;
-  renderList();
+  renderEquipment();
 }
 function toggleSelect(barcode, cardEl) {
   if (selected.has(barcode)) selected.delete(barcode); else selected.add(barcode);
@@ -686,80 +747,27 @@ function toggleSelect(barcode, cardEl) {
 }
 function selectAll(checked) {
   selected.clear();
-  if (checked) currentListUnits().forEach((u) => selected.add(u.id));
-  renderList();
+  if (checked) currentEquipmentUnits().forEach((u) => selected.add(u.id));
+  renderEquipment();
 }
 function updateBulkCount() {
   const el = $("#bulkCount"); if (el) el.textContent = `${selected.size} נבחרו`;
 }
 async function bulkNotePrompt() {
-  if (!selected.size) return toast("לא נבחרו מזגנים", true);
-  const note = prompt(`הוספת הערה ל-${selected.size} מזגנים:`);
+  if (!selected.size) return toast("לא נבחר ציוד", true);
+  const note = prompt(`הוספת הערה ל-${selected.size} פריטים:`);
   if (!note || !note.trim()) return;
-  try { await bulkAppendNote(currentProjectId, [...selected], note); toast(`✅ עודכנו ${selected.size} מזגנים`); exitSelectMode(); }
+  try { await bulkAppendNote(currentProjectId, [...selected], note); toast(`✅ עודכנו ${selected.size} פריטים`); exitSelectMode(); }
   catch (e) { console.error(e); toast("שגיאה בעדכון", true); }
 }
 async function bulkMaintPrompt() {
-  if (!selected.size) return toast("לא נבחרו מזגנים", true);
-  const desc = prompt(`רשומת טיפול ל-${selected.size} מזגנים — מה בוצע?`);
+  if (!selected.size) return toast("לא נבחר ציוד", true);
+  const desc = prompt(`רשומת טיפול ל-${selected.size} פריטים — מה בוצע?`);
   if (!desc || !desc.trim()) return;
   try {
     await bulkAddService(currentProjectId, [...selected], { date: new Date().toISOString().slice(0, 10), description: desc, technician: "" });
-    toast(`✅ נוסף טיפול ל-${selected.size} מזגנים`); exitSelectMode();
+    toast(`✅ נוסף טיפול ל-${selected.size} פריטים`); exitSelectMode();
   } catch (e) { console.error(e); toast("שגיאה בשמירה", true); }
-}
-
-// ===================================================================
-//  Buildings view
-// ===================================================================
-function renderBuildings() {
-  const box = $("#buildingsGrid"); if (!box) return;
-  const counts = countBy(UNITS, "building");
-  const names = Object.keys(counts).sort((a, b) => a.localeCompare(b, "he"));
-  const allCard = `
-    <div class="bld-card bld-card--all" data-building="__all__">
-      <div class="bld-card__img bld-card__img--all">❄️</div>
-      <div class="bld-card__body">
-        <div class="bld-card__name">כל המזגנים</div>
-        <div class="bld-card__count">${UNITS.length} מזגנים</div>
-      </div>
-    </div>`;
-  box.innerHTML = allCard + names.map((name) => {
-    const b = BUILDINGS[name];
-    const cover = b?.cover
-      ? `<img class="bld-card__img" src="${esc(b.cover)}" alt="">`
-      : `<div class="bld-card__img bld-card__img--empty">🏢</div>`;
-    return `
-      <div class="bld-card" data-building="${esc(name)}">
-        ${cover}
-        <div class="bld-card__body">
-          <div class="bld-card__name">${esc(name)}</div>
-          <div class="bld-card__count">${counts[name]} מזגנים</div>
-        </div>
-        <button class="bld-cover-btn" data-cover="${esc(name)}" title="תמונת מבנה">📷</button>
-      </div>`;
-  }).join("");
-
-  $$(".bld-card", box).forEach((c) => c.addEventListener("click", (e) => {
-    if (e.target.closest(".bld-cover-btn")) return;
-    const b = c.dataset.building;
-    openBuilding(b === "__all__" ? null : b);
-  }));
-  $$(".bld-cover-btn", box).forEach((btn) => btn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const file = await pickImage();
-    if (!file) return;
-    toast("מעלה תמונה…");
-    try { await saveBuilding(currentProjectId, btn.dataset.cover, { cover: await compressImage(file) }); toast("📷 תמונת המבנה עודכנה"); }
-    catch (err) { console.error(err); toast("שגיאה בהעלאת תמונה", true); }
-  }));
-}
-
-function openBuilding(name) {
-  listContext.building = name;
-  $("#listFilter").value = "";
-  if (selectMode) exitSelectMode();
-  switchView("list");
 }
 
 // ===================================================================
@@ -767,7 +775,7 @@ function openBuilding(name) {
 // ===================================================================
 function renderComplaints() {
   const box = $("#complaintsList"); if (!box) return;
-  const filt = $(".cmpl-filter .seg.is-active")?.dataset.cf || "open";
+  const filt = $("#view-complaints .cmpl-filter .seg.is-active")?.dataset.cf || "open";
   let list = COMPLAINTS;
   if (filt === "open") list = list.filter((c) => c.status !== "done");
   else if (filt === "done") list = list.filter((c) => c.status === "done");
@@ -780,7 +788,6 @@ function renderComplaints() {
 function complaintHTML(c) {
   const done = c.status === "done";
   const meta = [
-    c.building ? `<span>🏢 ${esc(c.building)}</span>` : "",
     c.barcode ? `<span>❄️ ${esc(c.barcode)}</span>` : "",
     c.phone ? `<span>📞 ${esc(c.phone)}</span>` : "",
   ].filter(Boolean).join("");
@@ -810,7 +817,6 @@ function openComplaintForm(id) {
     <form class="form" id="cmplForm">
       <label>שם הלקוח<input name="customer" value="${esc(c.customer || "")}" placeholder="שם"></label>
       <label>טלפון<input name="phone" inputmode="tel" value="${esc(c.phone || "")}" placeholder="מספר טלפון"></label>
-      <label>מבנה<input name="building" list="buildings" value="${esc(c.building || "")}" placeholder="מבנה קשור"></label>
       <label>ברקוד מזגן (אופציונלי)<input name="barcode" value="${esc(c.barcode || "")}" placeholder="ברקוד"></label>
       <label>תיאור התקלה / הפנייה<textarea name="description" rows="3" required placeholder="מה הלקוח דיווח?">${esc(c.description || "")}</textarea></label>
       <label class="chk"><input type="checkbox" name="done" ${c.status === "done" ? "checked" : ""}> סומן כטופל</label>
@@ -827,7 +833,7 @@ function openComplaintForm(id) {
     const f = e.target;
     const data = {
       customer: f.customer.value, phone: f.phone.value,
-      building: f.building.value, barcode: cleanBarcode(f.barcode.value),
+      barcode: cleanBarcode(f.barcode.value),
       description: f.description.value, status: f.done.checked ? "done" : "open",
     };
     if (!data.description.trim()) return;
@@ -841,6 +847,229 @@ function openComplaintForm(id) {
     try { await deleteComplaint(currentProjectId, id); toast("🗑️ נמחק"); closeModal(); }
     catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
   });
+}
+
+// ===================================================================
+//  Contacts
+// ===================================================================
+function renderContacts() {
+  const box = $("#contactsList"); if (!box) return;
+  box.innerHTML = CONTACTS.length
+    ? CONTACTS.map(contactHTML).join("")
+    : emptyHTML("👤", "אין אנשי קשר", "הוסף איש קשר עם הכפתור ➕ איש קשר");
+  $$(".contact", box).forEach((c) => c.addEventListener("click", () => openContactForm(c.dataset.id)));
+}
+
+function contactHTML(c) {
+  const meta = [c.role, c.phone ? `📞 ${c.phone}` : ""].filter(Boolean).map(esc).join(" · ");
+  return `
+    <div class="card cmpl contact" data-id="${esc(c.id)}">
+      <div class="card__body">
+        <div class="card__head"><span class="cmpl__customer">${esc(c.name || "איש קשר")}</span></div>
+        ${meta ? `<div class="cmpl__meta">${meta}</div>` : ""}
+        ${c.notes ? `<div class="cmpl__desc">${esc(c.notes)}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+function openContactForm(id) {
+  const c = id ? CONTACTS.find((x) => x.id === id) || {} : {};
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">👤 ${id ? "עריכת איש קשר" : "איש קשר חדש"}</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="contactForm">
+      <label>שם<input name="name" value="${esc(c.name || "")}" required placeholder="שם מלא"></label>
+      <label>תפקיד<input name="role" value="${esc(c.role || "")}" placeholder="לדוגמה: מנהל עבודה, קבלן ראשי"></label>
+      <label>טלפון<input name="phone" inputmode="tel" value="${esc(c.phone || "")}" placeholder="מספר טלפון"></label>
+      <label>הערות<textarea name="notes" rows="2">${esc(c.notes || "")}</textarea></label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💾 שמור</button>
+        ${id ? `<button type="button" class="btn btn--danger" id="contactDelete">🗑️ מחק</button>`
+             : `<button type="button" class="btn btn--ghost" data-close>ביטול</button>`}
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#contactForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const data = { name: f.name.value, role: f.role.value, phone: f.phone.value, notes: f.notes.value };
+    if (!data.name.trim()) return;
+    try {
+      if (id) await updateContact(currentProjectId, id, data); else await addContact(currentProjectId, data);
+      toast("💾 נשמר"); closeModal();
+    } catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
+  });
+  if (id) $("#contactDelete").addEventListener("click", async () => {
+    if (!confirm("למחוק את איש הקשר?")) return;
+    try { await deleteContact(currentProjectId, id); toast("🗑️ נמחק"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
+  });
+}
+
+// ===================================================================
+//  Project crew (workers on this project)
+// ===================================================================
+function renderCrew() {
+  const box = $("#crewBody"); if (!box) return;
+  box.innerHTML = `
+    <form class="svc-form" id="crewForm" style="border-top:none;margin-top:8px;padding-top:0">
+      <div class="row"><input name="name" placeholder="שם העובד" required><input name="role" placeholder="תפקיד (אופציונלי)"></div>
+      <button class="btn btn--primary" type="submit">➕ הוסף לצוות</button>
+    </form>
+    <div class="veh-list">
+      ${CREW.length ? CREW.map(crewRow).join("") : `<p class="tl-empty">עדיין לא נוספו אנשי צוות.</p>`}
+    </div>`;
+  $("#crewForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (!f.name.value.trim()) return;
+    try { await addCrewMember(currentProjectId, { name: f.name.value, role: f.role.value }); f.reset(); }
+    catch (err) { console.error(err); toast("שגיאה", true); }
+  });
+  $$(".veh-item", box).forEach((el) => {
+    el.querySelector(".veh-del").addEventListener("click", async () => {
+      try { await deleteCrewMember(currentProjectId, el.dataset.id); } catch (e) { console.error(e); toast("שגיאה", true); }
+    });
+  });
+}
+function crewRow(c) {
+  return `
+    <div class="veh-item" data-id="${esc(c.id)}">
+      <span class="veh-name">${esc(c.name)}${c.role ? ` · ${esc(c.role)}` : ""}</span>
+      <button class="veh-del" title="מחק">🗑️</button>
+    </div>`;
+}
+
+// ===================================================================
+//  Tasks (open / closed)
+// ===================================================================
+function renderTasks() {
+  const box = $("#tasksList"); if (!box) return;
+  const filt = $(".task-filter .seg.is-active")?.dataset.tf || "open";
+  let list = TASKS;
+  if (filt === "open") list = list.filter((t) => !t.done);
+  else if (filt === "done") list = list.filter((t) => t.done);
+  box.innerHTML = list.length
+    ? list.map(taskHTML).join("")
+    : emptyHTML("✅", "אין משימות", "הוסף משימה עם הכפתור ➕ משימה");
+  $$(".task-row", box).forEach((row) => {
+    const id = row.dataset.id;
+    const t = TASKS.find((x) => x.id === id);
+    row.querySelector("[data-toggle]").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try { await updateTask(currentProjectId, id, { done: !t.done }); } catch (err) { console.error(err); toast("שגיאה", true); }
+    });
+    row.querySelector("[data-del]").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("למחוק את המשימה?")) return;
+      try { await deleteTask(currentProjectId, id); } catch (err) { console.error(err); toast("שגיאה", true); }
+    });
+    row.addEventListener("click", (e) => { if (e.target.closest("[data-toggle],[data-del]")) return; openTaskForm(id); });
+  });
+}
+function taskHTML(t) {
+  const meta = [t.assignee, t.dueDate ? `📅 ${fmtDMY(t.dueDate)}` : ""].filter(Boolean).map(esc).join(" · ");
+  return `
+    <div class="task-row ${t.done ? "is-done" : ""}" data-id="${esc(t.id)}">
+      <button class="part-check" data-toggle>${t.done ? "✅" : "⬜"}</button>
+      <div class="part-row__body"><b>${esc(t.title)}</b>${meta ? `<div class="part-row__bld">${meta}</div>` : ""}</div>
+      <button class="part-del" data-del>🗑️</button>
+    </div>`;
+}
+function openTaskForm(id) {
+  const t = id ? TASKS.find((x) => x.id === id) || {} : {};
+  clearModalSubs();
+  const modal = $("#modal");
+  modal.dataset.barcode = ""; modal.dataset.parts = "";
+  $("#modalPanel").innerHTML = `
+    <div class="detail__head">
+      <div class="detail__barcode">✅ ${id ? "עריכת משימה" : "משימה חדשה"}</div>
+      <button class="detail__close" data-close>×</button>
+    </div>
+    <form class="form" id="taskForm">
+      <label>כותרת<input name="title" value="${esc(t.title || "")}" required placeholder="מה צריך לעשות?"></label>
+      <label>אחראי<input name="assignee" value="${esc(t.assignee || "")}" placeholder="שם (אופציונלי)"></label>
+      <label>תאריך יעד<input type="date" name="dueDate" value="${esc(t.dueDate || "")}"></label>
+      <label class="chk"><input type="checkbox" name="done" ${t.done ? "checked" : ""}> סומן כהושלם</label>
+      <div class="detail__actions">
+        <button type="submit" class="btn btn--primary">💾 שמור</button>
+        ${id ? `<button type="button" class="btn btn--danger" id="taskDelete">🗑️ מחק</button>`
+             : `<button type="button" class="btn btn--ghost" data-close>ביטול</button>`}
+      </div>
+    </form>`;
+  modal.hidden = false;
+  $("#taskForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const data = { title: f.title.value, assignee: f.assignee.value, dueDate: f.dueDate.value, done: f.done.checked };
+    if (!data.title.trim()) return;
+    try {
+      if (id) await updateTask(currentProjectId, id, data); else await addTask(currentProjectId, data);
+      toast("💾 נשמר"); closeModal();
+    } catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
+  });
+  if (id) $("#taskDelete").addEventListener("click", async () => {
+    if (!confirm("למחוק את המשימה?")) return;
+    try { await deleteTask(currentProjectId, id); toast("🗑️ נמחק"); closeModal(); }
+    catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
+  });
+}
+
+// ===================================================================
+//  Media (plans / photo gallery / warranty) — images only, one shared
+//  implementation reused by all three sections via a category filter.
+// ===================================================================
+function renderMedia(category) {
+  const box = $(`#mediaGrid-${category}`); if (!box) return;
+  const list = MEDIA[category] || [];
+  box.innerHTML = list.length
+    ? list.map((m) => `
+        <div class="photo-thumb">
+          <img src="${esc(m.url)}" alt="">
+          ${m.label ? `<span class="photo-thumb__label">${esc(m.label)}</span>` : ""}
+          <button class="photo-del" data-del="${esc(m.id)}" title="מחק">✕</button>
+        </div>`).join("")
+    : emptyHTML("🖼️", "אין עדיין תמונות", 'הוסף תמונה עם הכפתור "➕ תמונה"');
+  $$(".photo-thumb img", box).forEach((img) => img.addEventListener("click", () => openPhotoViewer(img.src)));
+  $$(".photo-del", box).forEach((b) => b.addEventListener("click", async () => {
+    if (!confirm("למחוק את התמונה?")) return;
+    try { await deleteMedia(currentProjectId, b.dataset.del); } catch (e) { console.error(e); toast("שגיאה", true); }
+  }));
+}
+async function addMediaPhoto(category) {
+  const files = await pickImages();
+  if (!files.length) return;
+  toast("מעלה תמונות…");
+  try {
+    for (const f of files) await addMedia(currentProjectId, category, await compressImage(f));
+    toast(`✅ נוספו ${files.length} תמונות`);
+  } catch (err) { console.error(err); toast("שגיאה בהעלאת תמונה", true); }
+}
+
+// ===================================================================
+//  Team messages (full history — same data as the Home widget)
+// ===================================================================
+function renderMessages() {
+  const box = $("#messagesList"); if (!box) return;
+  box.innerHTML = UPDATES.length
+    ? UPDATES.map((u) => `
+        <div class="team__item" data-id="${esc(u.id)}">
+          <button class="team__x" title="הסר">✕</button>
+          <div class="team__body">
+            <div class="team__text">${esc(u.text)}</div>
+            <div class="team__meta">👤 ${esc(u.author || "צוות")} · ${esc(fmtTime(u.createdAt))}</div>
+          </div>
+        </div>`).join("")
+    : `<p class="team__empty">אין עדכונים.</p>`;
+  $$(".team__x", box).forEach((b) => b.addEventListener("click", async () => {
+    const id = b.closest(".team__item").dataset.id;
+    try { await deleteUpdate(currentProjectId, id); } catch (e) { console.error(e); toast("שגיאה בהסרה", true); }
+  }));
 }
 
 // ===================================================================
@@ -958,7 +1187,7 @@ function detailHTML(u) {
           <input type="date" name="date" value="${new Date().toISOString().slice(0,10)}">
           <input name="technician" placeholder="טכנאי (אופציונלי)">
         </div>
-        <textarea name="description" rows="2" placeholder="מה בוצע? (שטיפה, החלפת פילטר, תיקון גז...)" required></textarea>
+        <textarea name="description" rows="2" placeholder="מה בוצע? (התקנה, שטיפה, החלפת פילטר, תיקון גז...)" required></textarea>
         <button class="btn btn--primary" type="submit">➕ הוסף טיפול</button>
       </form>
     </div>`;
@@ -1154,12 +1383,11 @@ function closeModal() {
   m.hidden = true;
   m.dataset.barcode = "";
   m.dataset.parts = "";
-  partsModalBuilding = null;
   clearModalSubs();
 }
 
 // ===================================================================
-//  Add unit
+//  Add unit (installed equipment)
 // ===================================================================
 async function onAddSubmit(e) {
   e.preventDefault();
@@ -1200,7 +1428,7 @@ async function onAddSubmit(e) {
     msg.className = "form-msg is-ok";
     toast("✅ המזגן נוסף");
     setTimeout(() => (msg.textContent = ""), 2500);
-    switchView("list");
+    switchView("equipment");
   } catch (err) {
     console.error(err);
     msg.textContent = "❌ שגיאה בשמירה: " + err.message;
@@ -1252,7 +1480,7 @@ function renderCalendar() {
     </div>
 
     <div class="panel">
-      <div class="section-head"><h3>📆 ימי עבודה בפרויקט</h3><button class="btn btn--primary btn--sm" id="calAddWorkday">➕ יום עבודה</button></div>
+      <div class="section-head"><h3>📆 יומן עבודה (ימי ביצוע בפועל)</h3><button class="btn btn--primary btn--sm" id="calAddWorkday">➕ יום עבודה</button></div>
       ${workdaysPanelHTML()}
     </div>`;
 
@@ -1288,8 +1516,8 @@ function openRecoveryScreen() {
   const modal = $("#modal");
   modal.dataset.barcode = ""; modal.dataset.parts = "";
   $("#modalPanel").innerHTML = `
-    <div class="detail__head"><div class="detail__barcode">🛟 שחזור מזגנים</div><button class="detail__close" data-close>×</button></div>
-    <p class="about__muted" style="margin:0 0 12px">אם הוספת מזגנים במכשיר זה שלא סונכרנו לענן — כאן אפשר לשחזר אותם.</p>
+    <div class="detail__head"><div class="detail__barcode">🛟 שחזור ציוד</div><button class="detail__close" data-close>×</button></div>
+    <p class="about__muted" style="margin:0 0 12px">אם הוספת ציוד במכשיר זה שלא סונכרן לענן — כאן אפשר לשחזר אותו.</p>
     <div id="recoverDiag"><p class="tl-empty">לחץ "בדוק מכשיר זה".</p></div>
     <button class="btn btn--primary" id="recoverCheck" style="margin-top:12px">בדוק מכשיר זה</button>`;
   modal.hidden = false;
@@ -1357,16 +1585,19 @@ function vehRow(i) {
 //  Excel export (SheetJS) — download or share (email/WhatsApp) on mobile
 // ===================================================================
 const EXPORT_SETS = [
-  { key: "units", sheet: "מזגנים", rows: () => UNITS.map((u) => ({
+  { key: "units", sheet: "ציוד מותקן", rows: () => UNITS.map((u) => ({
       "ברקוד": u.barcode, "מבנה": u.building || "", "קומה/אזור": u.area || "", "סוג": u.type || "",
       "מיקום": u.location || "", "סטטוס": (STATUS[u.status] || STATUS.not_started).label, "הערות": u.notes || "",
       "מק\"ט ישן": u.oldSku || "", "טיפול אחרון": u.lastService || "" })) },
+  { key: "contacts", sheet: "אנשי קשר", rows: () => CONTACTS.map((c) => ({ "שם": c.name, "תפקיד": c.role || "", "טלפון": c.phone || "", "הערות": c.notes || "" })) },
+  { key: "crew", sheet: "צוות הפרויקט", rows: () => CREW.map((c) => ({ "שם": c.name, "תפקיד": c.role || "" })) },
+  { key: "tasks", sheet: "משימות", rows: () => TASKS.map((t) => ({ "כותרת": t.title, "אחראי": t.assignee || "", "תאריך יעד": t.dueDate || "", "סטטוס": t.done ? "הושלם" : "פתוח" })) },
   { key: "vehicles", sheet: "מלאי רכבים", rows: () => VEHICLE_ITEMS.map((i) => ({ "עובד": i.owner, "פריט": i.item, "סטטוס": i.missing ? "חסר" : "יש" })) },
-  { key: "parts", sheet: "חוסרים במבנים", rows: () => PARTS.map((p) => ({ "מבנה": p.building || "", "פריט": p.item, "הערה": p.note || "", "סטטוס": p.done ? "סופק" : "חסר" })) },
-  { key: "complaints", sheet: "תקלות", rows: () => COMPLAINTS.map((c) => ({ "לקוח": c.customer || "", "טלפון": c.phone || "", "מבנה": c.building || "", "ברקוד": c.barcode || "", "תיאור": c.description || "", "סטטוס": c.status === "done" ? "טופל" : "פתוח" })) },
+  { key: "parts", sheet: "חוסרים", rows: () => PARTS.map((p) => ({ "פריט": p.item, "הערה": p.note || "", "סטטוס": p.done ? "סופק" : "חסר" })) },
+  { key: "complaints", sheet: "תקלות", rows: () => COMPLAINTS.map((c) => ({ "לקוח": c.customer || "", "טלפון": c.phone || "", "ברקוד": c.barcode || "", "תיאור": c.description || "", "סטטוס": c.status === "done" ? "טופל" : "פתוח" })) },
   { key: "vacations", sheet: "חופשות", rows: () => VACATIONS.map((v) => ({ "עובד": v.name, "מתאריך": v.from, "עד": v.to, "סטטוס": v.status, "הערה": v.note || "" })) },
-  { key: "workdays", sheet: "ימי עבודה", rows: () => WORKDAYS.map((w) => ({ "תאריך": w.date, "הערה": w.note || "" })) },
-  { key: "visits", sheet: "עבודות מתוכננות", rows: () => VISITS.map((v) => ({ "מבנה": v.building || "", "תאריך": v.date || "", "שעה": v.time || "", "מיקום": v.location || "", "עובדים": v.workers || "", "הערות": v.notes || "" })) },
+  { key: "workdays", sheet: "יומן עבודה", rows: () => WORKDAYS.map((w) => ({ "תאריך": w.date, "הערה": w.note || "" })) },
+  { key: "visits", sheet: "עבודות מתוכננות", rows: () => VISITS.map((v) => ({ "כותרת": v.title || "", "תאריך": v.date || "", "שעה": v.time || "", "מיקום": v.location || "", "עובדים": v.workers || "", "הערות": v.notes || "" })) },
 ];
 
 // choose-what-to-export picker
@@ -1410,12 +1641,12 @@ async function exportExcel(keys) {
 
   const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const fname = `ac-tracker-${todayISO()}.xlsx`;
+  const fname = `gp-mizugim-${todayISO()}.xlsx`;
   const file = new File([blob], fname, { type: blob.type });
 
   // On mobile, offer the native share sheet (email / WhatsApp) with the file attached.
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: "דוח AC Tracker" }); return; }
+    try { await navigator.share({ files: [file], title: "דוח ג.פ מיזוגים" }); return; }
     catch (err) { if (err && err.name === "AbortError") return; /* else fall through to download */ }
   }
   const url = URL.createObjectURL(blob);
@@ -1541,26 +1772,22 @@ function renderDashboard() {
   if (!box) return;
   const total = UNITS.length;
   const gc = statusCounts(UNITS);
-  const buildings = [...new Set(UNITS.map((u) => u.building || "ללא"))].sort((a, b) => a.localeCompare(b, "he"));
   const today = todayISO();
   const todayWorkers = [...new Set(VISITS.filter((v) => v.date === today).map((v) => v.workers).filter(Boolean))];
+  const openTasks = TASKS.filter((t) => !t.done).length;
+  const openParts = PARTS.filter((p) => !p.done).length;
 
   box.innerHTML = `
     <div class="stat-grid">
-      <div class="stat"><div class="stat__num">${total}</div><div class="stat__label">מזגנים סה״כ</div></div>
+      <div class="stat"><div class="stat__num">${total}</div><div class="stat__label">ציוד מותקן סה״כ</div></div>
       <div class="stat"><div class="stat__num st-done">${gc.completed}</div><div class="stat__label">הושלמו</div></div>
       <div class="stat"><div class="stat__num st-prog">${gc.in_progress}</div><div class="stat__label">בתהליך</div></div>
       <div class="stat"><div class="stat__num st-wait">${gc.waiting_part + gc.issue}</div><div class="stat__label">ממתין / תקלה</div></div>
+      <div class="stat"><div class="stat__num">${openTasks}</div><div class="stat__label">משימות פתוחות</div></div>
+      <div class="stat"><div class="stat__num">${openParts}</div><div class="stat__label">חוסרים</div></div>
     </div>
 
-    ${todayWorkers.length ? `<div class="panel"><h3>👷 עובדים היום</h3><div class="chips-row">${todayWorkers.map((w) => `<span class="chip chip--accent">${esc(w)}</span>`).join("")}</div></div>` : ""}
-
-    <div class="panel">
-      <h3>🏢 סטטוס לפי מבנה</h3>
-      <div class="site-cards">${buildings.map(siteCardHTML).join("")}</div>
-    </div>`;
-
-  $$(".site-card").forEach((c) => c.addEventListener("click", () => openBuilding(c.dataset.building === "ללא" ? "ללא" : c.dataset.building)));
+    ${todayWorkers.length ? `<div class="panel"><h3>👷 עובדים היום</h3><div class="chips-row">${todayWorkers.map((w) => `<span class="chip chip--accent">${esc(w)}</span>`).join("")}</div></div>` : ""}`;
 }
 
 function statusCounts(list) {
@@ -1568,37 +1795,8 @@ function statusCounts(list) {
   list.forEach((u) => { c[STATUS[u.status] ? u.status : "not_started"]++; });
   return c;
 }
-function buildingUnits(name) { return UNITS.filter((u) => (u.building || "ללא") === name); }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function tomorrowISO() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
-
-function siteCardHTML(name) {
-  const list = buildingUnits(name);
-  const c = statusCounts(list);
-  const pct = list.length ? Math.round(c.completed / list.length * 100) : 0;
-  const missing = PARTS.filter((p) => !p.done && (p.building || "") === name).length;
-  const areas = [...new Set(list.map((u) => u.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, "he"));
-  const areaRows = areas.map((a) => {
-    const al = list.filter((u) => u.area === a);
-    const ac = al.filter((u) => u.status === "completed").length;
-    return `<div class="area-row"><span>${esc(a)}</span><span>${ac}/${al.length}</span></div>
-      <div class="bar"><i style="width:${al.length ? ac / al.length * 100 : 0}%"></i></div>`;
-  }).join("");
-  return `
-    <div class="site-card" data-building="${esc(name)}">
-      <div class="site-card__head"><b>${esc(name)}</b><span class="chip">${c.completed}/${list.length}</span></div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
-      <div class="site-stats">
-        <span class="st-done">✅ ${c.completed}</span>
-        <span class="st-prog">🔧 ${c.in_progress}</span>
-        <span class="st-not">⚪ ${c.not_started}</span>
-        <span class="st-wait">📦 ${c.waiting_part}</span>
-        <span class="st-issue">⚠️ ${c.issue}</span>
-        ${missing ? `<span class="st-miss">🧰 ${missing} חוסרים</span>` : ""}
-      </div>
-      ${areaRows ? `<div class="area-block">${areaRows}</div>` : ""}
-    </div>`;
-}
 
 function fmtDMY(iso) {
   if (!iso) return "";
@@ -1656,15 +1854,11 @@ function visitsListHTML() {
   const today = todayISO();
   const upcoming = VISITS.filter((v) => !v.date || v.date >= today);
   if (!upcoming.length) return `<p class="tl-empty">אין עבודות מתוכננות.</p>`;
-  return upcoming.map((v) => {
-    const list = buildingUnits(v.building);
-    const c = statusCounts(list);
-    return `
+  return upcoming.map((v) => `
       <div class="visit-row" data-id="${esc(v.id)}">
-        <div class="visit-row__main"><b>${esc(v.building || "עבודה")}</b> <span class="chip">${esc(v.date || "")}${v.time ? ` ${esc(v.time)}` : ""}</span></div>
-        <div class="visit-row__meta">${v.workers ? `👷 ${esc(v.workers)}` : ""}${list.length ? ` · ✅ ${c.completed}/${list.length}` : ""}</div>
-      </div>`;
-  }).join("");
+        <div class="visit-row__main"><b>${esc(v.title || "עבודה")}</b> <span class="chip">${esc(v.date || "")}${v.time ? ` ${esc(v.time)}` : ""}</span></div>
+        <div class="visit-row__meta">${[v.location, v.workers ? `👷 ${v.workers}` : ""].filter(Boolean).map(esc).join(" · ")}</div>
+      </div>`).join("");
 }
 
 // ---- Upcoming Work card (home) ----
@@ -1675,9 +1869,6 @@ function renderUpcoming() {
     .sort((a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || ""))));
   if (!upcoming.length) { el.innerHTML = `<div class="upcoming__empty">🗓️ לא נקבעה עבודה.</div>`; return; }
   const v = upcoming[0];
-  const list = buildingUnits(v.building);
-  const c = statusCounts(list);
-  const pct = list.length ? Math.round(c.completed / list.length * 100) : 0;
   const dlabel = v.date === today ? "היום" : (v.date === tomorrowISO() ? "מחר" : v.date);
   el.innerHTML = `
     <div class="upcoming__card" data-id="${esc(v.id)}">
@@ -1685,10 +1876,9 @@ function renderUpcoming() {
         <span class="upcoming__tag">🗓️ עבודה קרובה</span>
         <span class="chip chip--accent">${dlabel}${v.time ? ` · ${esc(v.time)}` : ""}</span>
       </div>
-      <div class="upcoming__title">🏢 ${esc(v.building || "עבודה")}</div>
+      <div class="upcoming__title">${esc(v.title || "עבודה")}</div>
       ${v.location ? `<div class="upcoming__row">📍 ${esc(v.location)}</div>` : ""}
       ${v.workers ? `<div class="upcoming__row">👷 ${esc(v.workers)}</div>` : ""}
-      ${list.length ? `<div class="upcoming__row">📊 ${c.completed}/${list.length} הושלמו</div><div class="bar"><i style="width:${pct}%"></i></div>` : ""}
     </div>`;
   el.querySelector(".upcoming__card").addEventListener("click", () => openVisitForm(v.id));
 }
@@ -1733,16 +1923,15 @@ function openAbout() {
       <button class="detail__close" data-close>×</button>
     </div>
     <div class="about">
-      <p><b>🗂️ AC Tracker — פרויקטים</b> — ניהול מזגנים במגוון אתרים</p>
-      <p>לחברת <b>ג.פ מיזוגים</b></p>
+      <p><b>🗂️ ג.פ מיזוגים בע"מ</b> — ניהול פרויקטי מיזוג אוויר</p>
       <p>פרויקטים במערכת: <b>${PROJECTS.length}</b></p>
-      ${p ? `<p>פרויקט נוכחי: <b>${esc(p.name)}</b> · מזגנים בו: <b>${UNITS.length}</b></p>` : ""}
+      ${p ? `<p>פרויקט נוכחי: <b>${esc(p.name)}</b> · ציוד מותקן: <b>${UNITS.length}</b></p>` : ""}
       <p class="about__muted">${isConfigured ? "מחובר לענן · סנכרון בזמן אמת לכל המכשירים" : "עובד מקומית במכשיר זה (ללא Firebase מוגדר)"}</p>
     </div>`;
   modal.hidden = false;
 }
 
-// ---- Team updates widget ----
+// ---- Team updates widget (Home) ----
 function renderUpdates() {
   const box = $("#teamList"); if (!box) return;
   const list = UPDATES.slice(0, 3);
@@ -1812,16 +2001,14 @@ function fmtTime(ts) {
 }
 
 // ---- Missing parts modal ----
-let partsModalBuilding = null;
-function openPartsModal(building) {
-  partsModalBuilding = building || null;
+function openPartsModal() {
   clearModalSubs();
   const modal = $("#modal");
   modal.dataset.barcode = "";
   modal.dataset.parts = "1";
   $("#modalPanel").innerHTML = `
     <div class="detail__head">
-      <div class="detail__barcode">🧰 חוסרים${building ? ` — ${esc(building)}` : ""}</div>
+      <div class="detail__barcode">🧰 חוסרים</div>
       <button class="detail__close" data-close>×</button>
     </div>
     <div class="parts-quick">
@@ -1835,14 +2022,14 @@ function openPartsModal(building) {
   modal.hidden = false;
 
   $$(".part-quick").forEach((b) => b.addEventListener("click", async () => {
-    try { await addPart(currentProjectId, { building: partsModalBuilding || "", item: b.dataset.item }); toast("➕ נוסף"); }
+    try { await addPart(currentProjectId, { item: b.dataset.item }); toast("➕ נוסף"); }
     catch (e) { console.error(e); toast("שגיאה", true); }
   }));
   $("#partForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
     if (!f.item.value.trim()) return;
-    try { await addPart(currentProjectId, { building: partsModalBuilding || "", item: f.item.value, note: f.note.value }); f.reset(); toast("➕ נוסף"); }
+    try { await addPart(currentProjectId, { item: f.item.value, note: f.note.value }); f.reset(); toast("➕ נוסף"); }
     catch (err) { console.error(err); toast("שגיאה", true); }
   });
   refreshPartsModal();
@@ -1852,13 +2039,11 @@ function refreshPartsModal() {
   const modal = $("#modal");
   if (modal.hidden || modal.dataset.parts !== "1") return;
   const box = $("#partsList"); if (!box) return;
-  const b = partsModalBuilding;
-  const list = PARTS.filter((p) => (b ? p.building === b : true));
-  box.innerHTML = list.length
-    ? list.map((p) => `
+  box.innerHTML = PARTS.length
+    ? PARTS.map((p) => `
         <div class="part-row ${p.done ? "is-done" : ""}" data-id="${esc(p.id)}">
           <button class="part-check" data-toggle>${p.done ? "✅" : "⬜"}</button>
-          <div class="part-row__body"><b>${esc(p.item)}</b>${p.note ? ` · ${esc(p.note)}` : ""}${(!b && p.building) ? `<div class="part-row__bld">🏢 ${esc(p.building)}</div>` : ""}</div>
+          <div class="part-row__body"><b>${esc(p.item)}</b>${p.note ? ` · ${esc(p.note)}` : ""}</div>
           <button class="part-del" data-del>🗑️</button>
         </div>`).join("")
     : `<p class="tl-empty">אין חוסרים רשומים.</p>`;
@@ -1886,7 +2071,7 @@ function openVisitForm(id) {
       <button class="detail__close" data-close>×</button>
     </div>
     <form class="form" id="visitForm">
-      <label>מבנה<input name="building" list="buildings" value="${esc(v.building || "")}" required placeholder="שם המבנה"></label>
+      <label>כותרת העבודה<input name="title" value="${esc(v.title || "")}" required placeholder="לדוגמה: התקנת מזגנים קומה 2"></label>
       <div class="row2">
         <label>תאריך<input type="date" name="date" value="${esc(v.date || todayISO())}"></label>
         <label>שעה<input type="time" name="time" value="${esc(v.time || "")}"></label>
@@ -1904,8 +2089,8 @@ function openVisitForm(id) {
   $("#visitForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
-    const data = { building: f.building.value, date: f.date.value, time: f.time.value, location: f.location.value, workers: f.workers.value, notes: f.notes.value };
-    if (!data.building.trim()) return;
+    const data = { title: f.title.value, date: f.date.value, time: f.time.value, location: f.location.value, workers: f.workers.value, notes: f.notes.value };
+    if (!data.title.trim()) return;
     try { if (id) await updateVisit(currentProjectId, id, data); else await addVisit(currentProjectId, data); toast("💾 נשמר"); closeModal(); }
     catch (err) { console.error(err); toast("שגיאה בשמירה", true); }
   });
@@ -1914,14 +2099,6 @@ function openVisitForm(id) {
     try { await deleteVisit(currentProjectId, id); toast("🗑️ נמחק"); closeModal(); }
     catch (err) { console.error(err); toast("שגיאה במחיקה", true); }
   });
-}
-
-function countBy(arr, key) {
-  return arr.reduce((acc, x) => {
-    const k = (x[key] || "").trim() || "ללא";
-    acc[k] = (acc[k] || 0) + 1;
-    return acc;
-  }, {});
 }
 
 // ===================================================================

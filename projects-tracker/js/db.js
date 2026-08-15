@@ -4,10 +4,10 @@
 //  Uses the Firebase v10 modular SDK loaded from Google's CDN.
 //
 //  Data model: everything that belongs to one job site lives under
-//  projects/{projectId}/... as a subcollection (units, buildings,
-//  complaints, parts, visits, workdays, updates). Vacations and vehicle
-//  inventory are staff-level, not tied to any one project, so they stay
-//  as top-level collections.
+//  projects/{projectId}/... as a subcollection (units, complaints, parts,
+//  visits, workdays, updates, contacts, crew, tasks, media). Vacations and
+//  vehicle inventory are staff-level, not tied to any one project, so they
+//  stay as top-level collections.
 // ===================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
@@ -62,7 +62,7 @@ export async function updateProject(id, fields) {
 }
 /** Delete a project and every subcollection doc that lives under it. */
 export async function deleteProject(id) {
-  const subcols = ["units", "buildings", "complaints", "parts", "visits", "workdays", "updates"];
+  const subcols = ["units", "complaints", "parts", "visits", "workdays", "updates", "contacts", "crew", "tasks", "media"];
   for (const name of subcols) {
     const snap = await getDocs(collection(db, "projects", id, name));
     for (const d of snap.docs) {
@@ -256,7 +256,6 @@ export async function addComplaint(pid, data) {
     customer:   data.customer?.trim()   || "",
     phone:      data.phone?.trim()      || "",
     barcode:    data.barcode?.trim()    || "",
-    building:   data.building?.trim()   || "",
     description:data.description?.trim()|| "",
     status:     data.status || "open",
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -270,26 +269,6 @@ export async function deleteComplaint(pid, id) {
   await deleteDoc(doc(db, "projects", pid, "complaints", id));
 }
 
-// ---- Buildings (cover photos) -------------------------------------
-const buildingsCol = (pid) => collection(db, "projects", pid, "buildings");
-
-export function watchBuildings(pid, onData, onError) {
-  return onSnapshot(buildingsCol(pid),
-    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)))),
-    (err) => onError && onError(err)
-  );
-}
-export async function saveBuilding(pid, name, fields) {
-  const key = String(name).trim();
-  if (!key) return;
-  await setDoc(doc(db, "projects", pid, "buildings", key),
-    { name: key, ...fields, updatedAt: serverTimestamp() }, { merge: true });
-}
-export async function deleteBuilding(pid, name) {
-  await deleteDoc(doc(db, "projects", pid, "buildings", String(name).trim()));
-}
-
 // ---- Missing parts / equipment ------------------------------------
 const partsCol = (pid) => collection(db, "projects", pid, "parts");
 export function watchParts(pid, onData, onError) {
@@ -300,7 +279,7 @@ export function watchParts(pid, onData, onError) {
 }
 export async function addPart(pid, data) {
   const ref = await addDoc(partsCol(pid), {
-    building: data.building?.trim() || "", item: data.item?.trim() || "",
+    item: data.item?.trim() || "",
     note: data.note?.trim() || "", done: false, createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -322,7 +301,7 @@ export function watchVisits(pid, onData, onError) {
 }
 export async function addVisit(pid, data) {
   const ref = await addDoc(visitsCol(pid), {
-    building: data.building?.trim() || "", date: data.date || "", time: data.time || "",
+    title: data.title?.trim() || "", date: data.date || "", time: data.time || "",
     location: data.location?.trim() || "", workers: data.workers?.trim() || "",
     notes: data.notes?.trim() || "", createdAt: serverTimestamp(),
   });
@@ -370,6 +349,85 @@ export async function addWorkday(pid, data) {
 }
 export async function deleteWorkday(pid, id) {
   await deleteDoc(doc(db, "projects", pid, "workdays", id));
+}
+
+// ---- Contacts (per project) ----------------------------------------
+const contactsCol = (pid) => collection(db, "projects", pid, "contacts");
+export function watchContacts(pid, onData, onError) {
+  const q = query(contactsCol(pid), orderBy("createdAt", "asc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addContact(pid, data) {
+  const ref = await addDoc(contactsCol(pid), {
+    name: data.name?.trim() || "", role: data.role?.trim() || "",
+    phone: data.phone?.trim() || "", notes: data.notes?.trim() || "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateContact(pid, id, fields) {
+  await updateDoc(doc(db, "projects", pid, "contacts", id), fields);
+}
+export async function deleteContact(pid, id) {
+  await deleteDoc(doc(db, "projects", pid, "contacts", id));
+}
+
+// ---- Project crew (workers on this project) ------------------------
+const crewCol = (pid) => collection(db, "projects", pid, "crew");
+export function watchCrew(pid, onData, onError) {
+  const q = query(crewCol(pid), orderBy("createdAt", "asc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addCrewMember(pid, data) {
+  const ref = await addDoc(crewCol(pid), {
+    name: data.name?.trim() || "", role: data.role?.trim() || "",
+    phone: data.phone?.trim() || "", createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function deleteCrewMember(pid, id) {
+  await deleteDoc(doc(db, "projects", pid, "crew", id));
+}
+
+// ---- Tasks (open/closed) --------------------------------------------
+const tasksCol = (pid) => collection(db, "projects", pid, "tasks");
+export function watchTasks(pid, onData, onError) {
+  const q = query(tasksCol(pid), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (err) => onError && onError(err));
+}
+export async function addTask(pid, data) {
+  const ref = await addDoc(tasksCol(pid), {
+    title: data.title?.trim() || "", assignee: data.assignee?.trim() || "",
+    dueDate: data.dueDate || "", done: false, createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+export async function updateTask(pid, id, fields) {
+  await updateDoc(doc(db, "projects", pid, "tasks", id), fields);
+}
+export async function deleteTask(pid, id) {
+  await deleteDoc(doc(db, "projects", pid, "tasks", id));
+}
+
+// ---- Media (plans / gallery / warranty — one collection, filtered by
+//      category, since the three sections are structurally identical) --
+const mediaCol = (pid) => collection(db, "projects", pid, "media");
+export function watchMedia(pid, category, onData, onError) {
+  const q = query(mediaCol(pid), orderBy("createdAt", "desc"));
+  return onSnapshot(q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((m) => m.category === category)),
+    (err) => onError && onError(err));
+}
+export async function addMedia(pid, category, url, label = "") {
+  await addDoc(mediaCol(pid), { category, url, label, createdAt: serverTimestamp() });
+}
+export async function deleteMedia(pid, id) {
+  await deleteDoc(doc(db, "projects", pid, "media", id));
 }
 
 // ---- Vacation requests (staff-level, shared across all projects) --
