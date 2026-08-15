@@ -6,26 +6,30 @@
 //
 //  Data model mirrors db.js: everything tied to one job site (units,
 //  complaints, parts, visits, workdays, updates, contacts, crew, tasks,
-//  media) is keyed by projectId (e.g. "ac_units__<projectId>"); vacations
+//  media) is keyed by projectId (e.g. "gpm_units__<projectId>"); vacations
 //  and vehicle inventory are staff-level and stay under flat, unsuffixed
 //  keys.
+//
+//  All keys use a "gpm_" prefix (distinct from the original AC Tracker's
+//  "ac_" prefix) so the two apps never collide in localStorage even when
+//  served from the same origin and neither has Firebase configured yet.
 // ===================================================================
 
-const PROJ_LIST_KEY = "ac_projects";
-const UNITS_KEY   = "ac_units";
-const SVC_KEY     = "ac_services";
-const PHOTO_KEY   = "ac_photos";
-const CMPL_KEY    = "ac_complaints";
-const PART_KEY    = "ac_parts";
-const VISIT_KEY   = "ac_visits";
-const UPD_KEY     = "ac_updates";
-const WD_KEY      = "ac_workdays";
-const CONTACTS_KEY = "ac_contacts";
-const CREW_KEY      = "ac_crew";
-const TASK_KEY      = "ac_tasks";
-const MEDIA_KEY     = "ac_media";
-const VAC_KEY     = "ac_vacations";
-const VEH_KEY     = "ac_vehicle_items";
+const PROJ_LIST_KEY = "gpm_projects";
+const UNITS_KEY   = "gpm_units";
+const SVC_KEY     = "gpm_services";
+const PHOTO_KEY   = "gpm_photos";
+const CMPL_KEY    = "gpm_complaints";
+const PART_KEY    = "gpm_parts";
+const VISIT_KEY   = "gpm_visits";
+const UPD_KEY     = "gpm_updates";
+const WD_KEY      = "gpm_workdays";
+const CONTACTS_KEY = "gpm_contacts";
+const CREW_KEY      = "gpm_crew";
+const TASK_KEY      = "gpm_tasks";
+const MEDIA_KEY     = "gpm_media";
+const VAC_KEY     = "gpm_vacations";
+const VEH_KEY     = "gpm_vehicle_items";
 
 const k = (base, pid) => `${base}__${pid}`;
 

@@ -26,7 +26,7 @@ const {
   watchVehicleItems, addVehicleItem, updateVehicleItem, deleteVehicleItem,
   bulkAddService, bulkAppendNote,
 } = store;
-const isGuy = () => (localStorage.getItem("ac_username") || "").trim() === "גיא";
+const isGuy = () => (localStorage.getItem("gpm_username") || "").trim() === "גיא";
 
 // ---- Work-status definitions ---------------------------------------
 const STATUS = {
@@ -60,7 +60,7 @@ const HOME_SECTIONS = [
 // scoped to whichever one is currently open (currentProjectId), except
 // VACATIONS / VEHICLE_ITEMS which are staff-level and shared by all.
 let PROJECTS = [];              // live mirror of the projects list (job sites)
-let currentProjectId = localStorage.getItem("ac_current_project") || null;
+let currentProjectId = localStorage.getItem("gpm_current_project") || null;
 let projectsBooted = false;     // true once the first projects snapshot has arrived
 
 let UNITS = [];                 // live mirror of the current project's installed equipment (AC units)
@@ -140,7 +140,7 @@ function checkLocalRecovery() {
   recoveryChecked = true;
   if (!UNITS.length) { recoveryChecked = false; return setTimeout(checkLocalRecovery, 2000); }
   let lu;
-  try { lu = JSON.parse(localStorage.getItem(`ac_units__${currentProjectId}`) || "{}"); } catch { return; }
+  try { lu = JSON.parse(localStorage.getItem(`gpm_units__${currentProjectId}`) || "{}"); } catch { return; }
   const cloudIds = new Set(UNITS.map((u) => u.id));
   const missing = Object.keys(lu).filter((bc) => !cloudIds.has(bc));
   if (missing.length) showRecoveryBanner(missing.length);
@@ -166,9 +166,9 @@ function showRecoveryBanner(n) {
  *  photos). Never overwrites cloud data. */
 async function recoverLocal() {
   const pid = currentProjectId;
-  const lu = JSON.parse(localStorage.getItem(`ac_units__${pid}`) || "{}");
-  const ls = JSON.parse(localStorage.getItem(`ac_services__${pid}`) || "{}");
-  const lp = JSON.parse(localStorage.getItem(`ac_photos__${pid}`) || "{}");
+  const lu = JSON.parse(localStorage.getItem(`gpm_units__${pid}`) || "{}");
+  const ls = JSON.parse(localStorage.getItem(`gpm_services__${pid}`) || "{}");
+  const lp = JSON.parse(localStorage.getItem(`gpm_photos__${pid}`) || "{}");
   const cloudIds = new Set(UNITS.map((u) => u.id));
   let n = 0;
   for (const bc in lu) {
@@ -191,7 +191,7 @@ async function runRecoveryDiag() {
   const box = document.getElementById("recoverDiag");
   if (!box) return;
   let lu = {};
-  try { lu = JSON.parse(localStorage.getItem(`ac_units__${currentProjectId}`) || "{}"); } catch {}
+  try { lu = JSON.parse(localStorage.getItem(`gpm_units__${currentProjectId}`) || "{}"); } catch {}
   const localCount = Object.keys(lu).length;
   const cloudIds = new Set(UNITS.map((u) => u.id));
   const missing = Object.keys(lu).filter((bc) => !cloudIds.has(bc)).sort();
@@ -246,7 +246,7 @@ function startGlobalRealtime() {
         // the current project may have been deleted from another device
         if (currentProjectId && !PROJECTS.find((p) => p.id === currentProjectId)) {
           currentProjectId = null;
-          localStorage.removeItem("ac_current_project");
+          localStorage.removeItem("gpm_current_project");
           stopProjectRealtime();
           switchView("projects");
         }
@@ -290,7 +290,7 @@ function openProject(id) {
   if (!p) return;
   stopProjectRealtime();
   currentProjectId = id;
-  localStorage.setItem("ac_current_project", id);
+  localStorage.setItem("gpm_current_project", id);
   updateHeaderProject();
   startProjectRealtime(id);
   switchView("home");
@@ -628,7 +628,7 @@ function openProjectForm(id) {
       await deleteProject(id);
       if (currentProjectId === id) {
         currentProjectId = null;
-        localStorage.removeItem("ac_current_project");
+        localStorage.removeItem("gpm_current_project");
         stopProjectRealtime();
       }
       toast("🗑️ הפרויקט נמחק"); closeModal(); switchView("projects");
@@ -1718,7 +1718,7 @@ function openVacationForm() {
   clearModalSubs();
   const modal = $("#modal");
   modal.dataset.barcode = ""; modal.dataset.parts = "";
-  const name = localStorage.getItem("ac_username") || "";
+  const name = localStorage.getItem("gpm_username") || "";
   $("#modalPanel").innerHTML = `
     <div class="detail__head"><div class="detail__barcode">🏖️ בקשת חופשה</div><button class="detail__close" data-close>×</button></div>
     <form class="form" id="vacForm">
@@ -1741,7 +1741,7 @@ function openVacationForm() {
     if (!f.name.value.trim()) return;
     let from = f.from.value, to = f.to.value;
     if (to && from && to < from) [from, to] = [to, from];
-    localStorage.setItem("ac_username", f.name.value.trim());
+    localStorage.setItem("gpm_username", f.name.value.trim());
     try { await addVacation({ name: f.name.value, from, to, note: f.note.value }); toast("📨 הבקשה נשלחה לאישור גיא"); closeModal(); }
     catch (err) { console.error(err); toast("שגיאה בשליחה", true); }
   });
@@ -1890,7 +1890,7 @@ function openNameForm() {
   clearModalSubs();
   const modal = $("#modal");
   modal.dataset.barcode = ""; modal.dataset.parts = "";
-  const name = localStorage.getItem("ac_username") || "";
+  const name = localStorage.getItem("gpm_username") || "";
   $("#modalPanel").innerHTML = `
     <div class="detail__head">
       <div class="detail__barcode">👤 השם שלי</div>
@@ -1907,7 +1907,7 @@ function openNameForm() {
   $("#nameForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const v = e.target.name.value.trim();
-    if (v) localStorage.setItem("ac_username", v);
+    if (v) localStorage.setItem("gpm_username", v);
     toast("💾 השם נשמר"); closeModal();
   });
 }
@@ -1955,7 +1955,7 @@ function openUpdateForm() {
   clearModalSubs();
   const modal = $("#modal");
   modal.dataset.barcode = ""; modal.dataset.parts = "";
-  const name = localStorage.getItem("ac_username") || "";
+  const name = localStorage.getItem("gpm_username") || "";
   $("#modalPanel").innerHTML = `
     <div class="detail__head">
       <div class="detail__barcode">💬 עדכון חדש</div>
@@ -1976,7 +1976,7 @@ function openUpdateForm() {
     const author = f.author.value.trim();
     const text = f.text.value.trim();
     if (!text) return;
-    if (author) localStorage.setItem("ac_username", author);
+    if (author) localStorage.setItem("gpm_username", author);
     try { await addUpdate(currentProjectId, { text, author }); toast("💬 העדכון פורסם"); closeModal(); }
     catch (err) { console.error(err); toast("שגיאה בפרסום", true); }
   });
